@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import { roleToEmojiMap, daysOfWeek, shiftCodeToDescription, availableShiftCodes, shiftTypeToHoursMap, getTimeOptionsForDate } from './types'; // Import descriptions and available codes // Added shiftTypeToHoursMap // Added getTimeOptionsForDate
+import { roleToEmojiMap, daysOfWeek, shiftCodeToDescription, availableShiftCodes, shiftTypeToHoursMap, getTimeOptionsForDate, availableRoles } from './types'; // Import descriptions and available codes // Added shiftTypeToHoursMap // Added getTimeOptionsForDate // Import availableRoles
 import { cn } from '@/lib/utils'; // Import cn
 
 declare module 'jspdf' {
@@ -58,6 +58,15 @@ export function ShiftMasterApp() {
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
 
   const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  // --- Holiday Management ---
+   // IMPORTANT: Define isHoliday *before* it's used in other useCallback hooks below
+   const isHoliday = useCallback((date: Date): boolean => {
+       if (!date || isNaN(date.getTime())) return false; // Basic date validation
+       const startOfDate = startOfDay(date);
+       return holidays.some(holiday => isEqual(startOfDay(holiday), startOfDate));
+   }, [holidays]);
+
 
   // --- Data Initialization and Persistence ---
   useEffect(() => {
@@ -125,12 +134,7 @@ export function ShiftMasterApp() {
   };
 
   // --- Holiday Management ---
-   // IMPORTANT: Define isHoliday *before* it's used in other useCallback hooks below
-   const isHoliday = useCallback((date: Date): boolean => {
-       if (!date || isNaN(date.getTime())) return false; // Basic date validation
-       const startOfDate = startOfDay(date);
-       return holidays.some(holiday => isEqual(startOfDay(holiday), startOfDate));
-   }, [holidays]);
+
 
    const handleToggleHoliday = useCallback((date: Date) => {
        const dateStart = startOfDay(date);
