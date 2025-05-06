@@ -1,11 +1,11 @@
 
 'use client';
 
-import React, { useState, useCallback } from 'react'; // Added useState, useCallback
+import React, { useState, useCallback, useMemo } from 'react'; // Added useState, useCallback
 import type { Employee, ScheduleData, ShiftCode, DayOfWeek, ScheduleEntry } from './types';
 import { ShiftCell } from './ShiftCell';
 import { getScheduleKey } from './utils';
-import { format, isEqual, startOfDay, addDays } from 'date-fns'; // Added isEqual, startOfDay, addDays
+import { format as formatDate, isEqual, startOfDay, addDays } from 'date-fns'; // Renamed format to formatDate
 import { ptBR } from 'date-fns/locale';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertTriangle, Edit, Trash2, CalendarHeart } from 'lucide-react'; // Added CalendarHeart for holiday toggle
@@ -134,7 +134,7 @@ export function ShiftTable({
                     >
                         <div className="flex flex-col items-center justify-center">
                             <span>{dayAbbreviations[date.getDay()]}</span>
-                            <span>{format(date, 'dd', { locale: ptBR })}</span>
+                            <span>{formatDate(date, 'dd', { locale: ptBR })}</span>
                             {/* Holiday Toggle Button */}
                             <TooltipProvider delayDuration={100}>
                                 <Tooltip>
@@ -172,13 +172,13 @@ export function ShiftTable({
             </TableRow>
           ) : (
             employees.map(emp => (
-                <TableRow key={emp.id} className="hover:bg-muted/10 group h-auto"> {/* Auto height */}
+                <TableRow key={emp.id} className="hover:bg-muted/10 group h-auto">
                   {/* Sticky Employee Name Cell */}
-                  <TableCell className="sticky left-0 z-10 bg-card group-hover:bg-muted/10 p-1 sm:p-2 border font-medium whitespace-nowrap text-xs sm:text-sm w-auto min-w-[100px]"> {/* Adjust width */}
+                  <TableCell className="sticky left-0 z-10 bg-card group-hover:bg-muted/10 p-1 sm:p-2 border font-medium whitespace-nowrap text-xs sm:text-sm w-auto min-w-[100px]">
                       {emp.name}
                   </TableCell>
                    {/* Sticky Actions Cell */}
-                   <TableCell className="sticky left-[calc(100px+theme(spacing.px))] md:left-[calc(120px+theme(spacing.px))] z-10 bg-card group-hover:bg-muted/10 p-0.5 sm:p-1 border w-16 min-w-[64px] max-w-[64px] text-center"> {/* Adjust width/left offset */}
+                   <TableCell className="sticky left-[calc(100px+theme(spacing.px))] md:left-[calc(120px+theme(spacing.px))] z-10 bg-card group-hover:bg-muted/10 p-0.5 sm:p-1 border w-16 min-w-[64px] max-w-[64px] text-center">
                       <div className="flex flex-col sm:flex-row justify-center items-center space-y-0.5 sm:space-y-0 sm:space-x-0.5 h-full">
                            <TooltipProvider delayDuration={100}>
                                <Tooltip>
@@ -246,7 +246,7 @@ export function ShiftTable({
                                 baseHours={scheduleEntry.baseHours}
                                 holidayReason={scheduleEntry.holidayReason} // Pass reason
                                 date={date}
-                                availableRoles={availableRoles} // Use the imported availableRoles
+                                availableRoles={availableRoles}
                                 isHoliday={holidayStatus} // Pass day's holiday status
                                 onChange={(newShift) => onShiftChange(emp.id, date, newShift)}
                                 onDetailChange={(field, value) => onDetailChange(emp.id, date, field, value)}

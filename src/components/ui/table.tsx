@@ -7,14 +7,13 @@ const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
 >(({ className, children, ...props }, ref) => (
+  // Ensure no leading/trailing space around the table tag
   <div className="relative w-full overflow-auto">
     <table
       ref={ref}
       className={cn("w-full caption-bottom text-sm", className)}
       {...props}
-    >{/* Ensure no whitespace before or after children */}
-      {children}
-    </table>
+    >{children}</table>
   </div>
 ))
 Table.displayName = "Table"
@@ -57,7 +56,8 @@ TableFooter.displayName = "TableFooter"
 const TableRow = React.forwardRef<
   HTMLTableRowElement,
   React.HTMLAttributes<HTMLTableRowElement>
->(({ className, ...props }, ref) => (
+>(({ className, children, ...props }, ref) => (
+  // Ensure no leading/trailing space around the children
   <tr
     ref={ref}
     className={cn(
@@ -65,7 +65,7 @@ const TableRow = React.forwardRef<
       className
     )}
     {...props}
-  />
+  >{children}</tr>
 ))
 TableRow.displayName = "TableRow"
 
@@ -118,3 +118,4 @@ export {
   TableCell,
   TableCaption,
 }
+
