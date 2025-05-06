@@ -1,19 +1,3 @@
-
-// Define the possible states for a shift cell
-export type ShiftCode = 'T' | 'F' | 'FF'; // Trabalha, Folga, Folga Feriado
-
-// Define descriptions for each shift code for legends/tooltips
-export const shiftCodeToDescription: Record<ShiftCode, string> = {
-  T: 'Trabalha',
-  F: 'Folga',
-  FF: 'Folga Feriado',
-};
-
-// Define the available shift codes that can be cycled or assigned
-// Note: Direct cycling in ShiftCell is only T <-> F. FF is set via popover.
-export const availableShiftCodes: ShiftCode[] = ['T', 'F', 'FF'];
-
-// Existing types (keep as is unless modification needed based on new requirements)
 export type ShiftType = 'Abertura' | 'Intermediário' | 'Fechamento' | 'Nenhum';
 export type DayOfWeek = "Domingo" | "Segunda" | "Terça" | "Quarta" | "Quinta" | "Sexta" | "Sábado";
 
@@ -27,8 +11,8 @@ export interface Employee {
 
 export interface ScheduleEntry {
   shift: ShiftCode;
-  role: string; // Role is relevant only when shift is 'T'
-  baseHours: string; // BaseHours is relevant only when shift is 'T'
+  role: string; // Role is relevant only when shift is 'TRABALHA'
+  baseHours: string; // BaseHours is relevant only when shift is 'TRABALHA'
   holidayReason?: string; // Optional reason for FF shift
 }
 
@@ -39,6 +23,20 @@ export interface FilterState {
   role: string;
   selectedDate: Date;
 }
+
+// Define the possible states for a shift cell
+export type ShiftCode = 'TRABALHA' | 'FOLGA' | 'FF'; // Trabalha, Folga, Folga Feriado
+
+// Define descriptions for each shift code for legends/tooltips
+export const shiftCodeToDescription: Record<ShiftCode, string> = {
+  TRABALHA: 'Trabalha',
+  FOLGA: 'Folga',
+  FF: 'Folga Feriado',
+};
+
+// Define the available shift codes that can be cycled or assigned
+// Note: Direct cycling in ShiftCell is only T <-> F. FF is set via popover.
+export const availableShiftCodes: ShiftCode[] = ['TRABALHA', 'FOLGA', 'FF'];
 
 // --- Time Mappings (Updated Format: Xh às Yh) ---
 

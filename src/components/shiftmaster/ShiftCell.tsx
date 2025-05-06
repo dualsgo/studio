@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
@@ -10,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Clock, Briefcase, Edit2, CalendarX2 } from 'lucide-react'; // Added CalendarX2 for FF
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input"; // Added Input for holiday reason
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { getTimeOptionsForDate, shiftCodeToDescription, availableShiftCodes } from './types'; // Import updated function and descriptions
 
 interface ShiftCellProps {
@@ -27,13 +28,13 @@ interface ShiftCellProps {
 
 // Updated styles including FF
 const shiftStyles: Record<ShiftCode, string> = {
-  T: 'bg-destructive text-destructive-foreground', // Red
-  F: 'bg-muted text-muted-foreground',           // Gray
+  TRABALHA: 'bg-destructive text-destructive-foreground', // Red
+  FOLGA: 'bg-muted text-muted-foreground',           // Gray
   FF: 'bg-accent text-accent-foreground',        // Green (for Folga Feriado)
 };
 
 // Only cycle T and F on simple click
-const shiftCycle: ShiftCode[] = ['T', 'F'];
+const shiftCycle: ShiftCode[] = ['TRABALHA', 'FOLGA'];
 
 const SELECT_NONE_VALUE = "--none--";
 
@@ -77,7 +78,7 @@ export function ShiftCell({
      }
 
     // Only cycle between T and F on simple click
-    if (shift === 'T' || shift === 'F') {
+    if (shift === 'TRABALHA' || shift === 'FOLGA') {
         const currentIndex = shiftCycle.indexOf(shift);
         const nextIndex = (currentIndex + 1) % shiftCycle.length;
         onChange(shiftCycle[nextIndex]); // Directly call onChange for simple T/F toggle
@@ -105,7 +106,7 @@ export function ShiftCell({
        onChange(popoverShift);
      }
      // Call onDetailChange for any detail that changed
-     if (popoverShift === 'T') {
+     if (popoverShift === 'TRABALHA') {
         if (popoverRole !== role) {
             onDetailChange('role', popoverRole);
         }
@@ -121,13 +122,13 @@ export function ShiftCell({
            onDetailChange('holidayReason', popoverHolidayReason);
         }
         // Clear role/hours if switching to FF
-        if (shift === 'T') {
+        if (shift === 'TRABALHA') {
             onDetailChange('role', '');
             onDetailChange('baseHours', '');
         }
-     } else { // popoverShift is 'F'
+     } else { // popoverShift is 'FOLGA'
          // Clear details if switching to F
-         if (shift === 'T') {
+         if (shift === 'TRABALHA') {
              onDetailChange('role', '');
              onDetailChange('baseHours', '');
          }
@@ -143,7 +144,7 @@ export function ShiftCell({
    const handlePopoverShiftChange = (value: string) => {
        setPopoverShift(value as ShiftCode);
        // Reset details if changing shift type away from T or FF
-       if (value !== 'T') {
+       if (value !== 'TRABALHA') {
            setPopoverRole('');
            setPopoverBaseHours('');
        }
@@ -163,11 +164,11 @@ export function ShiftCell({
 
 
   const getShiftDisplayText = (code: ShiftCode): string => {
-      return code;
+      return shiftCodeToDescription[code];
   };
 
   const cellTitle = `Dia: ${format(date, 'dd/MM')} - ${shiftCodeToDescription[shift]}${shift === 'FF' && holidayReason ? ` (${holidayReason})` : ''}
-Clique: ${shift === 'T' || shift === 'F' ? 'Alternar T/F' : 'Nada'}
+Clique: ${shift === 'TRABALHA' || shift === 'FOLGA' ? 'Alternar TRABALHA/FOLGA' : 'Nada'}
 Shift/Ctrl/Direito: Detalhes/Mudar Turno`;
 
   return (
@@ -179,7 +180,7 @@ Shift/Ctrl/Direito: Detalhes/Mudar Turno`;
             shiftStyles[shift],
             isHoliday ? 'border border-dashed border-primary/50' : '',
             // Violation ring only for 'T' shifts
-            hasViolation && shift === 'T' ? 'ring-1 sm:ring-2 ring-offset-1 ring-yellow-500' : '',
+            hasViolation && shift === 'TRABALHA' ? 'ring-1 sm:ring-2 ring-offset-1 ring-yellow-500' : '',
             'hover:brightness-90 dark:hover:brightness-110'
           )}
           onClick={handleSimpleClick} // Use simple click handler
@@ -196,7 +197,7 @@ Shift/Ctrl/Direito: Detalhes/Mudar Turno`;
           <span className="font-semibold text-xs sm:text-sm pointer-events-none">{getShiftDisplayText(shift)}</span>
 
           {/* Display role and hours ONLY if shift is 'T' */}
-          {shift === 'T' && (
+          {shift === 'TRABALHA' && (
             <>
               <span className="block truncate text-[8px] sm:text-[10px] opacity-80 pointer-events-none leading-tight">{role || 'S/Função'}</span>
               <span className="block truncate text-[8px] sm:text-[10px] opacity-80 pointer-events-none leading-tight">{baseHours || 'S/Horário'}</span>
@@ -244,7 +245,7 @@ Shift/Ctrl/Direito: Detalhes/Mudar Turno`;
           </div>
 
           {/* Conditional Fields based on selected popoverShift */}
-          {popoverShift === 'T' && (
+          {popoverShift === 'TRABALHA' && (
             <>
               {/* Role Select */}
               <div className="space-y-1">
