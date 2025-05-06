@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'; // For employee search
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Calendar as CalendarIcon, Search, FilterX } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Import Card components
 
 interface ShiftFiltersProps {
   filters: FilterState;
@@ -20,6 +21,9 @@ interface ShiftFiltersProps {
   onFilterChange: (newFilters: Partial<FilterState>) => void;
   onClearFilters: () => void;
 }
+
+// Define a constant for the "all" value to avoid magic strings
+const ALL_VALUE = "all";
 
 export function ShiftFilters({
   filters,
@@ -31,17 +35,22 @@ export function ShiftFilters({
 }: ShiftFiltersProps) {
 
   const handleSelectChange = (name: keyof FilterState) => (value: string) => {
-    onFilterChange({ [name]: value });
+    // Map the special "all" value back to an empty string for the state
+    const actualValue = value === ALL_VALUE ? '' : value;
+    onFilterChange({ [name]: actualValue });
   };
 
   const handleDateChange = (name: 'startDate' | 'endDate') => (date?: Date) => {
     if (date) {
       onFilterChange({ [name]: date });
+    } else {
+      // Handle cases where date might be cleared, if applicable by your UI design
+      // onFilterChange({ [name]: undefined }); // Or null, depending on FilterState type
     }
   };
 
   return (
-    <Card className="p-4 shadow-sm">
+    <Card className="p-4 shadow-sm mb-4"> {/* Added margin-bottom */}
        <CardHeader className="p-2 mb-2">
         <CardTitle className="text-lg text-primary">Filtros</CardTitle>
       </CardHeader>
@@ -50,12 +59,12 @@ export function ShiftFilters({
             {/* Store Filter */}
             <div className="space-y-1">
               <Label htmlFor="store-filter">Loja</Label>
-              <Select value={filters.store || ''} onValueChange={handleSelectChange('store')}>
+              <Select value={filters.store || ALL_VALUE} onValueChange={handleSelectChange('store')}>
                 <SelectTrigger id="store-filter">
                   <SelectValue placeholder="Selecione a Loja" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todas</SelectItem>
+                  <SelectItem value={ALL_VALUE}>Todas</SelectItem>
                   {stores.map(store => (
                     <SelectItem key={store} value={store}>{store}</SelectItem>
                   ))}
@@ -67,12 +76,12 @@ export function ShiftFilters({
             <div className="space-y-1">
               <Label htmlFor="employee-filter">Colaborador</Label>
                {/* Using Select for now, could enhance with search later */}
-              <Select value={filters.employee || ''} onValueChange={handleSelectChange('employee')}>
+              <Select value={filters.employee || ALL_VALUE} onValueChange={handleSelectChange('employee')}>
                 <SelectTrigger id="employee-filter">
                   <SelectValue placeholder="Selecione Colaborador" />
                 </SelectTrigger>
                 <SelectContent>
-                   <SelectItem value="">Todos</SelectItem>
+                   <SelectItem value={ALL_VALUE}>Todos</SelectItem>
                    {/* Add search input here if needed */}
                    {/* <div className="p-2"><Input placeholder="Buscar..." /></div> */}
                   {employees.map(emp => (
@@ -85,12 +94,12 @@ export function ShiftFilters({
             {/* Role Filter */}
             <div className="space-y-1">
               <Label htmlFor="role-filter">Função</Label>
-              <Select value={filters.role || ''} onValueChange={handleSelectChange('role')}>
+              <Select value={filters.role || ALL_VALUE} onValueChange={handleSelectChange('role')}>
                 <SelectTrigger id="role-filter">
                   <SelectValue placeholder="Selecione a Função" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todas</SelectItem>
+                  <SelectItem value={ALL_VALUE}>Todas</SelectItem>
                   {roles.map(role => (
                     <SelectItem key={role} value={role}>{role}</SelectItem>
                   ))}
@@ -169,6 +178,3 @@ export function ShiftFilters({
     </Card>
   );
 }
-
-// Need Card components for styling
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
