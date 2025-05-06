@@ -21,13 +21,19 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { daysOfWeek, availableRoles, availableShiftTypes } from './types'; // Import constants
 
+// Define a unique, non-empty value for "None" options in Select
+const SELECT_NONE_VALUE = "select-none";
+
 // Zod schema for validation
 const employeeSchema = z.object({
   id: z.number().nullable(), // Allow null for new employees
   name: z.string().min(2, { message: "O nome deve ter pelo menos 2 caracteres." }),
-  fixedDayOff: z.enum(["", ...daysOfWeek]), // Allow empty string for "Nenhuma"
-  defaultRole: z.string().optional(), // Optional field
-  defaultShiftType: z.enum(["", ...availableShiftTypes]), // Allow empty string for "Nenhum"
+  // Allow SELECT_NONE_VALUE for the "Nenhuma" option in the form
+  fixedDayOff: z.enum([SELECT_NONE_VALUE, ...daysOfWeek]),
+  // Allow optional string (Zod automatically handles mapping empty string from form to undefined)
+  defaultRole: z.string().optional(),
+  // Allow SELECT_NONE_VALUE for the "Nenhum" option in the form
+  defaultShiftType: z.enum([SELECT_NONE_VALUE, ...availableShiftTypes]),
 });
 
 type EmployeeFormData = z.infer<typeof employeeSchema>;
@@ -48,12 +54,13 @@ export function EditEmployeeDialog({ isOpen, onOpenChange, employee, onSave }: E
     formState: { errors },
   } = useForm<EmployeeFormData>({
     resolver: zodResolver(employeeSchema),
+    // Set default values, mapping empty/undefined to SELECT_NONE_VALUE for selects
     defaultValues: {
       id: null,
       name: '',
-      fixedDayOff: "",
-      defaultRole: '',
-      defaultShiftType: "",
+      fixedDayOff: SELECT_NONE_VALUE,
+      defaultRole: '', // Keep empty for optional string
+      defaultShiftType: SELECT_NONE_VALUE,
     },
   });
 
@@ -63,21 +70,22 @@ export function EditEmployeeDialog({ isOpen, onOpenChange, employee, onSave }: E
       reset({
         id: employee?.id ?? null,
         name: employee?.name ?? '',
-        fixedDayOff: employee?.fixedDayOff || "", // Handle undefined or null
-        defaultRole: employee?.defaultRole ?? '',
-        defaultShiftType: employee?.defaultShiftType || "",
+        // Map empty/undefined employee values to SELECT_NONE_VALUE for the form state
+        fixedDayOff: employee?.fixedDayOff || SELECT_NONE_VALUE,
+        defaultRole: employee?.defaultRole ?? '', // Keep as empty string if undefined
+        defaultShiftType: employee?.defaultShiftType || SELECT_NONE_VALUE,
       });
     }
   }, [isOpen, employee, reset]);
 
   const onSubmit = (data: EmployeeFormData) => {
-     // Ensure optional fields are correctly passed, converting "" back to undefined if needed by onSave
+     // Map SELECT_NONE_VALUE back to undefined or empty string before saving
      const saveData: Employee = {
          id: data.id ?? 0, // Use 0 or handle appropriately if ID generation is elsewhere
          name: data.name,
-         fixedDayOff: data.fixedDayOff === "" ? undefined : data.fixedDayOff as DayOfWeek,
-         defaultRole: data.defaultRole || undefined,
-         defaultShiftType: data.defaultShiftType === "" ? undefined : data.defaultShiftType as ShiftType,
+         fixedDayOff: data.fixedDayOff === SELECT_NONE_VALUE ? undefined : data.fixedDayOff as DayOfWeek,
+         defaultRole: data.defaultRole || undefined, // Zod handles empty string -> undefined if optional
+         defaultShiftType: data.defaultShiftType === SELECT_NONE_VALUE ? undefined : data.defaultShiftType as ShiftType,
      };
     onSave(saveData);
   };
@@ -117,12 +125,14 @@ export function EditEmployeeDialog({ isOpen, onOpenChange, employee, onSave }: E
                 name="fixedDayOff"
                 control={control}
                 render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value || ""}>
+                  // Use the form field value directly, which includes SELECT_NONE_VALUE
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <SelectTrigger id="fixedDayOff" className="col-span-3">
                       <SelectValue placeholder="Nenhuma" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Nenhuma</SelectItem>
+                       {/* Use SELECT_NONE_VALUE for the "Nenhuma" item */}
+                      <SelectItem value={SELECT_NONE_VALUE}>Nenhuma</SelectItem>
                       {daysOfWeek.map(day => (
                         <SelectItem key={day} value={day}>{day}</SelectItem>
                       ))}
@@ -130,33 +140,36 @@ export function EditEmployeeDialog({ isOpen, onOpenChange, employee, onSave }: E
                   </Select>
                 )}
               />
-               {/* Error display for select (optional, less common) */}
-               {/* {errors.fixedDayOff && <p className="col-start-2 col-span-3 text-xs text-destructive mt-1">{errors.fixedDayOff.message}</p>} */}
+               {errors.fixedDayOff && <p className="col-start-2 col-span-3 text-xs text-destructive mt-1">{errors.fixedDayOff.message}</p>}
             </div>
 
             {/* Default Role Field */}
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="defaultRole" className="text-right">
-                Função Padrão
-              </Label>
-               <Controller
-                   name="defaultRole"
-                   control={control}
-                   render={({ field }) => (
-                       <Select onValueChange={field.onChange} value={field.value || ""}>
-                           <SelectTrigger id="defaultRole" className="col-span-3">
-                           <SelectValue placeholder="Nenhuma" />
-                           </SelectTrigger>
-                           <SelectContent>
-                           <SelectItem value="">Nenhuma</SelectItem>
-                           {availableRoles.map(role => (
-                               <SelectItem key={role} value={role}>{role}</SelectItem>
-                           ))}
-                           </SelectContent>
-                       </Select>
-                   )}
+                <Label htmlFor="defaultRole" className="text-right">
+                    Função Padrão
+                </Label>
+                <Controller
+                    name="defaultRole"
+                    control={control}
+                    render={({ field }) => (
+                        // For optional string field, map empty string to SELECT_NONE_VALUE for display
+                        <Select onValueChange={field.onChange} value={field.value || SELECT_NONE_VALUE}>
+                            <SelectTrigger id="defaultRole" className="col-span-3">
+                                <SelectValue placeholder="Nenhuma" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {/* Use SELECT_NONE_VALUE for the "Nenhuma" item */}
+                                <SelectItem value={SELECT_NONE_VALUE}>Nenhuma</SelectItem>
+                                {availableRoles.map(role => (
+                                    <SelectItem key={role} value={role}>{role}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
                 />
+                {errors.defaultRole && <p className="col-start-2 col-span-3 text-xs text-destructive mt-1">{errors.defaultRole.message}</p>}
             </div>
+
 
             {/* Default Shift Type Field */}
             <div className="grid grid-cols-4 items-center gap-4">
@@ -167,19 +180,23 @@ export function EditEmployeeDialog({ isOpen, onOpenChange, employee, onSave }: E
                      name="defaultShiftType"
                      control={control}
                      render={({ field }) => (
-                         <Select onValueChange={field.onChange} value={field.value || ""}>
+                         // Use the form field value directly, which includes SELECT_NONE_VALUE
+                         <Select onValueChange={field.onChange} value={field.value}>
                              <SelectTrigger id="defaultShiftType" className="col-span-3">
-                             <SelectValue placeholder="Nenhum" />
+                                <SelectValue placeholder="Nenhum" />
                              </SelectTrigger>
                              <SelectContent>
-                                <SelectItem value="">Nenhum</SelectItem>
-                                {availableShiftTypes.filter(type => type !== 'Nenhum').map(type => ( // Exclude 'Nenhum' from options if it represents empty
+                                {/* Use SELECT_NONE_VALUE for the "Nenhum" item */}
+                                <SelectItem value={SELECT_NONE_VALUE}>Nenhum</SelectItem>
+                                {/* Filter out 'Nenhum' type as it's handled by SELECT_NONE_VALUE */}
+                                {availableShiftTypes.filter(type => type !== 'Nenhum').map(type => (
                                      <SelectItem key={type} value={type}>{type}</SelectItem>
                                 ))}
                              </SelectContent>
                          </Select>
                      )}
                  />
+                 {errors.defaultShiftType && <p className="col-start-2 col-span-3 text-xs text-destructive mt-1">{errors.defaultShiftType.message}</p>}
             </div>
 
           </div>
