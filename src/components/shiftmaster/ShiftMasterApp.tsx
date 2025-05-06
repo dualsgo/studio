@@ -472,6 +472,12 @@ export function ShiftMasterApp() {
 
   // --- PDF & WhatsApp Generation ---
 
+ // Abbreviated day names for PDF header
+ const dayAbbreviations: Record<number, string> = {
+     0: 'DOM', 1: 'SEG', 2: 'TER', 3: 'QUA', 4: 'QUI', 5: 'SEX', 6: 'SAB'
+ };
+
+
  const generatePdf = useCallback(() => {
      if (!isClient) return;
 
@@ -480,14 +486,15 @@ export function ShiftMasterApp() {
      const tableEndDate = endOfMonth(currentMonth);
      const datesInRange = getDatesInRange(tableStartDate, tableEndDate);
 
-     doc.setFontSize(18);
-     doc.text('ShiftMaster - Escala de Trabalho', 14, 20);
-     doc.setFontSize(11);
+     doc.setFontSize(16); // Slightly smaller title
+     doc.text('ShiftMaster - Escala de Trabalho', 14, 15);
+     doc.setFontSize(10); // Smaller subtitle
      doc.setTextColor(100);
      const dateRangeText = `Mês: ${format(tableStartDate, 'MMMM yyyy', { locale: ptBR })}`;
-     doc.text(dateRangeText, 14, 28);
+     doc.text(dateRangeText, 14, 22);
 
-     const head = [['Colaborador', ...datesInRange.map(d => format(d, 'EEE dd', { locale: ptBR }))]]; // Shorter date format
+     // Use abbreviated day names and only the day number for header
+     const head = [['Colaborador', ...datesInRange.map(d => `${dayAbbreviations[d.getDay()]}\n${format(d, 'dd')}`)]];
 
      // Use filteredEmployees for PDF content to match the screen
      const body = filteredEmployees.map(emp => {
@@ -498,77 +505,108 @@ export function ShiftMasterApp() {
              let cellText = '-'; // Default for D or missing entries
              if (entry) {
                  if (entry.shift === 'T') {
-                    // Combine role and hours, handle missing info gracefully
-                    cellText = `${entry.role || '?'}\n${entry.baseHours || '?'}`;
+                    // Combine role and hours compactly, handle missing info
+                    const roleInitial = entry.role ? entry.role.substring(0, 3).toUpperCase() : '?'; // e.g., CAI, VEN
+                    const hoursCompact = entry.baseHours ? entry.baseHours.replace('h às ', '-').replace('h','').replace(' ', '') : '?'; // e.g., 10-18
+                    cellText = `${roleInitial}\n${hoursCompact}`;
                  } else if (entry.shift === 'H') {
-                    cellText = `${entry.role || '?'}\n${entry.baseHours || '?'}\n(H)`; // Indicate Special Hour
+                    const roleInitial = entry.role ? entry.role.substring(0, 3).toUpperCase() : '?';
+                    const hoursCompact = entry.baseHours ? entry.baseHours.replace('h às ', '-').replace('h','').replace(' ', '') : '?';
+                    cellText = `${roleInitial}\n${hoursCompact}\n(H)`; // Indicate Special Hour
                  } else if (entry.shift === 'F') {
                     cellText = 'F'; // Folga
                  }
-                 // 'D' (Disponible) or missing entries will keep the default '-'
              }
              row.push(cellText);
          });
          return row;
      });
 
+     // Calculate available width and dynamic column width
+     const pageWidth = doc.internal.pageSize.getWidth();
+     const margins = 14 * 2; // Left and right margins
+     const employeeColWidth = 25; // Keep employee column fixed but maybe smaller
+     const availableWidthForDates = pageWidth - margins - employeeColWidth;
+     const dateColWidth = Math.max(5, availableWidthForDates / datesInRange.length); // Ensure a minimum width
+
+
      doc.autoTable({
-         startY: 35,
+         startY: 28, // Adjust start position
          head: head,
          body: body,
-         theme: 'grid', // Use grid theme for clear cell borders
+         theme: 'grid',
          headStyles: {
-             fillColor: [41, 128, 185], // Blue header (#2980b9)
+             fillColor: [41, 128, 185], // Blue header
              textColor: 255,
              fontStyle: 'bold',
              halign: 'center',
-             fontSize: 7, // Smaller font for header
-             cellPadding: 1, // Reduce padding
+             valign: 'middle', // Vertically align header text
+             fontSize: 6, // Smaller font for header
+             cellPadding: { top: 0.5, right: 0.5, bottom: 0.5, left: 0.5 }, // Minimal padding
+             lineColor: [200, 200, 200], // Light gray lines for header too
+             lineWidth: 0.1,
          },
          styles: {
-             cellPadding: 0.5, // Reduce cell padding for body
-             fontSize: 6, // Very small font size for cell content
+             cellPadding: { top: 0.5, right: 0.2, bottom: 0.5, left: 0.2 }, // Minimal horizontal padding
+             fontSize: 5, // Even smaller font size for cell content
              valign: 'middle',
              halign: 'center',
-             lineWidth: 0.1, // Thin lines
-             lineColor: [200, 200, 200], // Light gray lines
-             minCellHeight: 8, // Reduce min cell height
+             lineWidth: 0.1,
+             lineColor: [200, 200, 200],
+             minCellHeight: 6, // Reduced min cell height
          },
          columnStyles: {
              0: { // Employee name column
                  halign: 'left',
                  fontStyle: 'bold',
-                 fontSize: 7, // Slightly larger font for names
-                 cellWidth: 25, // Fixed width for employee names
-                 minCellWidth: 25,
-                 // No wrap needed if width is sufficient
+                 fontSize: 6, // Slightly larger font for names
+                 cellWidth: employeeColWidth,
+                 minCellWidth: employeeColWidth, // Fixed width
+                 overflow: 'linebreak', // Allow name to wrap if needed
              },
-             // Date columns - let autoTable handle width or set dynamically if needed
+              // Apply calculated width to date columns (index 1 onwards)
+             ...datesInRange.reduce((acc, _, index) => {
+                  acc[index + 1] = { cellWidth: dateColWidth, minCellWidth: 5 };
+                  return acc;
+             }, {} as any),
          },
          didParseCell: function (data) {
-             // Apply cell styling based on content (similar to ShiftCell)
-             if (data.cell.section === 'body' && data.column.index > 0) { // Skip employee name column
-                 const cellText = data.cell.raw?.toString() || '';
-                 const entry = schedule[getScheduleKey(filteredEmployees[data.row.index].id, datesInRange[data.column.index -1])];
+             // Apply cell styling based on content
+             if (data.cell.section === 'body' && data.column.index > 0) {
+                 const empIndex = data.row.index;
+                 const dateIndex = data.column.index - 1;
+                  if (empIndex >= 0 && empIndex < filteredEmployees.length && dateIndex >= 0 && dateIndex < datesInRange.length) {
+                      const entry = schedule[getScheduleKey(filteredEmployees[empIndex].id, datesInRange[dateIndex])];
 
-                 if (entry?.shift === 'F') { // Folga
-                     data.cell.styles.fillColor = [240, 240, 240]; // Light gray (Muted)
-                     data.cell.styles.textColor = [120, 120, 120]; // Gray text
-                 } else if (entry?.shift === 'H') { // Horário Especial
-                     data.cell.styles.fillColor = [52, 152, 219]; // Blue (Primary)
-                     data.cell.styles.textColor = 255; // White text
-                     data.cell.styles.fontStyle = 'bold';
-                 } else if (entry?.shift === 'T') { // Trabalha
-                     data.cell.styles.fillColor = [231, 76, 60]; // Red (Destructive)
-                     data.cell.styles.textColor = 255; // White text
-                     data.cell.styles.fontStyle = 'bold';
-                 } else { // Disponible ('D') or '-'
-                     data.cell.styles.fillColor = [255, 255, 255]; // White background
-                     data.cell.styles.textColor = [180, 180, 180]; // Very light gray text for '-'
-                 }
-                 // Handle multi-line text alignment
-                 data.cell.styles.valign = 'middle';
+                      if (entry?.shift === 'F') { // Folga
+                         data.cell.styles.fillColor = [240, 240, 240]; // Light gray
+                         data.cell.styles.textColor = [120, 120, 120];
+                     } else if (entry?.shift === 'H') { // Horário Especial
+                         data.cell.styles.fillColor = [52, 152, 219]; // Blue
+                         data.cell.styles.textColor = 255;
+                         data.cell.styles.fontStyle = 'bold';
+                     } else if (entry?.shift === 'T') { // Trabalha
+                         data.cell.styles.fillColor = [231, 76, 60]; // Red
+                         data.cell.styles.textColor = 255;
+                         data.cell.styles.fontStyle = 'bold';
+                     } else { // Disponible ('D') or '-'
+                         data.cell.styles.fillColor = [255, 255, 255]; // White
+                         data.cell.styles.textColor = [180, 180, 180]; // Light gray for '-'
+                         data.cell.styles.fontStyle = 'normal'; // Ensure normal style for '-'
+                     }
+                  }
              }
+             // Adjust font style for multi-line headers (day abbreviation + number)
+              if (data.cell.section === 'head' && data.column.index > 0) {
+                   data.cell.styles.fontStyle = 'bold';
+                   data.cell.styles.halign = 'center';
+                   data.cell.styles.valign = 'middle';
+              }
+              // Ensure employee name column font style remains correct
+              if (data.cell.section === 'body' && data.column.index === 0) {
+                   data.cell.styles.fontStyle = 'bold';
+                   data.cell.styles.halign = 'left';
+              }
          }
      });
 
@@ -611,23 +649,23 @@ export function ShiftMasterApp() {
 
 
   return (
-    <div className="p-4 md:p-6 lg:p-8 flex flex-col h-screen bg-background"> {/* Ensure background color */}
+    <div className="p-2 sm:p-4 md:p-6 lg:p-8 flex flex-col h-screen bg-background"> {/* Adjusted padding for smaller screens */}
       {/* Header */}
-      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-         <h1 className="text-2xl font-bold text-primary">ShiftMaster – Gerenciador de Escalas</h1>
+       <div className="flex flex-col sm:flex-row justify-between items-center mb-4 flex-wrap gap-2">
+         <h1 className="text-xl sm:text-2xl font-bold text-primary text-center sm:text-left">ShiftMaster – Gerenciador de Escalas</h1>
          {/* Action Buttons */}
-         <div className="flex items-center space-x-2 flex-wrap gap-2">
-            <Button onClick={generatePdf} variant="outline">
-                 <FileText className="mr-2 h-4 w-4" /> PDF (Mês)
-            </Button>
-            <Button onClick={generateDailyWhatsAppText} variant="outline">
-                <MessageSquareText className="mr-2 h-4 w-4" /> WhatsApp (Dia)
-            </Button>
-             <Button onClick={handleAddEmployee} >
-                 <UserPlus className="mr-2 h-4 w-4" /> Adicionar
+          <div className="flex items-center space-x-1 sm:space-x-2 flex-wrap gap-1 justify-center sm:justify-end"> {/* Adjusted spacing and gap */}
+             <Button onClick={generatePdf} variant="outline" size="sm"> {/* Smaller button size */}
+                 <FileText className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> PDF (Mês)
              </Button>
-             <Button variant="destructive" onClick={handleResetScale}>
-                <RotateCcw className="mr-2 h-4 w-4" /> Zerar Mês
+             <Button onClick={generateDailyWhatsAppText} variant="outline" size="sm">
+                 <MessageSquareText className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> WhatsApp (Dia)
+             </Button>
+             <Button onClick={handleAddEmployee} size="sm">
+                 <UserPlus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> Adicionar
+             </Button>
+             <Button variant="destructive" onClick={handleResetScale} size="sm">
+                 <RotateCcw className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> Zerar Mês
              </Button>
          </div>
       </div>
@@ -641,10 +679,10 @@ export function ShiftMasterApp() {
       />
 
       {/* Month Navigation */}
-       <div className="flex justify-center items-center my-4 space-x-4">
-          <Button variant="outline" size="sm" onClick={() => setCurrentMonth(prev => addDays(startOfMonth(prev), -1))}>Mês Anterior</Button>
-          <span className="text-lg font-semibold text-foreground">{format(currentMonth, 'MMMM yyyy', { locale: ptBR })}</span>
-          <Button variant="outline" size="sm" onClick={() => setCurrentMonth(prev => addDays(endOfMonth(prev), 1))}>Próximo Mês</Button>
+       <div className="flex justify-center items-center my-2 sm:my-4 space-x-2 sm:space-x-4"> {/* Adjusted margin and spacing */}
+          <Button variant="outline" size="sm" onClick={() => setCurrentMonth(prev => addDays(startOfMonth(prev), -1))}>Mês Ant.</Button> {/* Shorter text */}
+          <span className="text-base sm:text-lg font-semibold text-foreground whitespace-nowrap">{format(currentMonth, 'MMMM yyyy', { locale: ptBR })}</span>
+          <Button variant="outline" size="sm" onClick={() => setCurrentMonth(prev => addDays(endOfMonth(prev), 1))}>Próx. Mês</Button> {/* Shorter text */}
        </div>
 
       {/* Table Area */}
@@ -706,3 +744,4 @@ export function ShiftMasterApp() {
     </div>
   );
 }
+

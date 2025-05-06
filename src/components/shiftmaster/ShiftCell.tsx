@@ -97,33 +97,33 @@ export function ShiftCell({
          {/* Using a Button as trigger for better accessibility and focus management */}
          <button
           className={cn(
-            'w-full h-full flex flex-col items-center justify-center text-xs p-1 select-none relative transition-colors duration-150 ease-in-out group focus:outline-none focus:ring-1 focus:ring-ring focus:z-10', // Added focus styles and z-index
+            'w-full h-full flex flex-col items-center justify-center text-xs p-0.5 sm:p-1 select-none relative transition-colors duration-150 ease-in-out group focus:outline-none focus:ring-1 focus:ring-ring focus:z-10', // Reduced padding, added sm breakpoint
             shiftStyles[shift],
-            hasViolation && (shift === 'T' || shift === 'H') ? 'ring-2 ring-offset-1 ring-yellow-500' : '', // Highlight violation on T/H
+            hasViolation && (shift === 'T' || shift === 'H') ? 'ring-1 sm:ring-2 ring-offset-1 ring-yellow-500' : '', // Thinner ring on small screens
             'hover:brightness-90 dark:hover:brightness-110'
           )}
           onClick={handleClick}
           onContextMenu={handleContextMenu} // Prevent context menu on the button itself
-          title={`Clique: Alterar Estado | Shift/Ctrl/Direito: Editar Detalhes`} // Updated tooltip
+          title={`Clique: Alterar | Shift/Ctrl/Direito: Detalhes`} // Simplified tooltip
         >
-           <span className="font-semibold text-sm pointer-events-none">{shift}</span>
+           <span className="font-semibold text-xs sm:text-sm pointer-events-none">{shift}</span> {/* Adjusted font size */}
             {/* Display role and hours only if shift is T or H */}
            {(shift === 'T' || shift === 'H') && (
              <>
-               <span className="block truncate text-[10px] opacity-80 pointer-events-none">{role || 'Sem função'}</span>
-               <span className="block truncate text-[10px] opacity-80 pointer-events-none">{baseHours || 'Sem horário'}</span>
+               <span className="block truncate text-[8px] sm:text-[10px] opacity-80 pointer-events-none leading-tight">{role || 'S/Função'}</span> {/* Smaller font, adjusted line height, shorter placeholder */}
+               <span className="block truncate text-[8px] sm:text-[10px] opacity-80 pointer-events-none leading-tight">{baseHours || 'S/Horário'}</span> {/* Smaller font, adjusted line height, shorter placeholder */}
                 {/* Edit icon specifically for T and H shifts */}
                <div
                  data-edit-icon="true" // Keep data attribute for targeting
                  onClick={handleOpenPopover} // Open popover on icon click
                  onContextMenu={(e) => { e.stopPropagation(); e.preventDefault(); handleOpenPopover(e); }} // Also open on right-click icon
-                 className="absolute bottom-0.5 right-0.5 p-0.5 rounded-sm hover:bg-black/10 dark:hover:bg-white/10 cursor-pointer" // Make it look clickable
+                 className="absolute bottom-0 right-0 p-0.5 rounded-sm hover:bg-black/10 dark:hover:bg-white/10 cursor-pointer" // Smaller padding
                  aria-label="Editar detalhes"
                  role="button" // Semantically a button
                  tabIndex={0} // Make it focusable
                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleOpenPopover(e as any); }} // Keyboard activation
                >
-                 <Edit2 className="h-2.5 w-2.5 opacity-50 group-hover:opacity-100 pointer-events-none" />
+                 <Edit2 className="h-2 w-2 sm:h-2.5 sm:w-2.5 opacity-50 group-hover:opacity-100 pointer-events-none" /> {/* Smaller icon */}
                </div>
              </>
            )}

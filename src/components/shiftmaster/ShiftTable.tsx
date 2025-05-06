@@ -23,6 +23,11 @@ interface ShiftTableProps {
   onDeleteEmployee: (empId: number) => void;
 }
 
+// Abbreviated day names for table header
+const dayAbbreviations: Record<number, string> = {
+    0: 'DOM', 1: 'SEG', 2: 'TER', 3: 'QUA', 4: 'QUI', 5: 'SEX', 6: 'SAB'
+};
+
 export function ShiftTable({
   employees,
   schedule,
@@ -94,22 +99,26 @@ export function ShiftTable({
 
   return (
     <div className="relative overflow-auto w-full h-full">
-      <Table className="min-w-full border-collapse relative table-fixed"> {/* Added table-fixed */}
+      {/* table-fixed helps with sticky columns but can make cell content overflow tricky */}
+      <Table className="min-w-full border-collapse relative"> {/* Removed table-fixed to allow natural cell sizing */}
         <TableHeader className="sticky top-0 z-10 bg-card shadow-sm"> {/* Changed bg-background to bg-card */}
             <TableRow>
               {/* Sticky Employee Name Header */}
-              <TableHead className="sticky left-0 z-20 bg-card p-2 border w-40 min-w-[160px] text-center font-semibold">
+              <TableHead className="sticky left-0 z-20 bg-card p-1 sm:p-2 border w-32 md:w-40 min-w-[128px] md:min-w-[160px] text-xs sm:text-sm text-center font-semibold"> {/* Reduced padding/width */}
                 Colaborador
               </TableHead>
               {/* Sticky Actions Header */}
-               <TableHead className="sticky left-[160px] z-20 bg-card p-2 border w-24 min-w-[96px] max-w-[96px] text-center font-semibold"> {/* Adjust left offset */}
+               <TableHead className="sticky left-[128px] md:left-[160px] z-20 bg-card p-1 border w-16 md:w-24 min-w-[64px] md:min-w-[96px] max-w-[64px] md:max-w-[96px] text-center font-semibold text-xs sm:text-sm"> {/* Reduced padding/width, adjusted left offset */}
                  Ações
                </TableHead>
               {/* Date Headers */}
               {dates.map(date => (
-                <TableHead key={date.toISOString()} className="p-1 border w-20 min-w-[80px] max-w-[80px] text-center font-semibold text-xs"> {/* Adjusted width, padding, font size */}
-                  {/* Use EEE dd for short day name and date */}
-                  {format(date, 'EEE dd', { locale: ptBR })}
+                <TableHead key={date.toISOString()} className="p-1 border w-12 min-w-[48px] max-w-[70px] text-center font-semibold text-[10px] sm:text-xs leading-tight"> {/* Reduced padding, width, font size */}
+                  {/* Use abbreviated day name and date */}
+                   <div className="flex flex-col items-center justify-center">
+                       <span>{dayAbbreviations[date.getDay()]}</span>
+                       <span>{format(date, 'dd', { locale: ptBR })}</span>
+                   </div>
                 </TableHead>
               ))}
             </TableRow>
@@ -118,26 +127,26 @@ export function ShiftTable({
           {employees.length === 0 ? (
              <TableRow>
                 {/* Span across all columns: 1 (Name) + 1 (Actions) + number of dates */}
-                <TableCell colSpan={dates.length + 2} className="text-center p-8 text-muted-foreground">
+                <TableCell colSpan={dates.length + 2} className="text-center p-4 sm:p-8 text-muted-foreground">
                     Nenhum colaborador encontrado para os filtros aplicados.
                 </TableCell>
             </TableRow>
           ) : (
             employees.map(emp => (
-                <TableRow key={emp.id} className="hover:bg-muted/10 group h-16"> {/* Increased row height */}
+                <TableRow key={emp.id} className="hover:bg-muted/10 group h-12 md:h-16"> {/* Reduced row height */}
                   {/* Sticky Employee Name Cell */}
-                  <TableCell className="sticky left-0 z-10 bg-card group-hover:bg-muted/10 p-2 border font-medium whitespace-nowrap w-40 min-w-[160px]">
+                  <TableCell className="sticky left-0 z-10 bg-card group-hover:bg-muted/10 p-1 sm:p-2 border font-medium whitespace-nowrap w-32 md:w-40 min-w-[128px] md:min-w-[160px] text-xs sm:text-sm"> {/* Reduced padding/width */}
                       {emp.name}
                   </TableCell>
 
                    {/* Sticky Actions Cell */}
-                   <TableCell className="sticky left-[160px] z-10 bg-card group-hover:bg-muted/10 p-1 border w-24 min-w-[96px] max-w-[96px] text-center">
-                      <div className="flex justify-center items-center space-x-1 h-full"> {/* Ensure vertical centering */}
+                   <TableCell className="sticky left-[128px] md:left-[160px] z-10 bg-card group-hover:bg-muted/10 p-0.5 sm:p-1 border w-16 md:w-24 min-w-[64px] md:min-w-[96px] max-w-[64px] md:max-w-[96px] text-center"> {/* Reduced padding/width */}
+                      <div className="flex flex-col sm:flex-row justify-center items-center space-y-0.5 sm:space-y-0 sm:space-x-0.5 h-full"> {/* Vertical stack on small screens */}
                            <TooltipProvider delayDuration={100}>
                                <Tooltip>
                                    <TooltipTrigger asChild>
-                                       <Button aria-label={`Editar ${emp.name}`} variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEditEmployee(emp)}>
-                                           <Edit className="h-4 w-4" />
+                                       <Button aria-label={`Editar ${emp.name}`} variant="ghost" size="icon" className="h-6 w-6 sm:h-7 sm:w-7" onClick={() => onEditEmployee(emp)}>
+                                           <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
                                        </Button>
                                    </TooltipTrigger>
                                    <TooltipContent side="top">
@@ -148,8 +157,8 @@ export function ShiftTable({
                           <TooltipProvider delayDuration={100}>
                               <Tooltip>
                                   <TooltipTrigger asChild>
-                                      <Button aria-label={`Remover ${emp.name}`} variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive/90" onClick={() => onDeleteEmployee(emp.id)}>
-                                          <Trash2 className="h-4 w-4" />
+                                      <Button aria-label={`Remover ${emp.name}`} variant="ghost" size="icon" className="h-6 w-6 sm:h-7 sm:w-7 text-destructive hover:text-destructive/90" onClick={() => onDeleteEmployee(emp.id)}>
+                                          <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
                                       </Button>
                                   </TooltipTrigger>
                                   <TooltipContent side="top" className="bg-destructive text-destructive-foreground">
@@ -180,7 +189,7 @@ export function ShiftTable({
                      }
 
                     return (
-                      <TableCell key={date.toISOString()} className="p-0 border w-20 min-w-[80px] max-w-[80px] h-full relative"> {/* Ensure full height */}
+                      <TableCell key={date.toISOString()} className="p-0 border w-12 min-w-[48px] max-w-[70px] h-full relative"> {/* Reduced padding/width */}
                          {/* Violation Indicator - Positioned at top-right */}
                          {hasViolation && (
                             <TooltipProvider delayDuration={100}>
@@ -188,7 +197,7 @@ export function ShiftTable({
                                     <TooltipTrigger asChild>
                                         {/* Make the trigger clickable/focusable for accessibility */}
                                         <button className="absolute top-0.5 right-0.5 p-0 z-10 text-yellow-500 hover:text-yellow-400 focus:outline-none focus:ring-1 focus:ring-yellow-600 rounded-full" aria-label="Violação de regra">
-                                            <AlertTriangle className="h-3 w-3" />
+                                            <AlertTriangle className="h-2.5 w-2.5 sm:h-3 sm:w-3" /> {/* Slightly smaller icon */}
                                         </button>
                                     </TooltipTrigger>
                                     <TooltipContent side="top" className="text-xs p-1 bg-destructive text-destructive-foreground">
