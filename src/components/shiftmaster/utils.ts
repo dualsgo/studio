@@ -1,9 +1,7 @@
-
-import { addDays, format, startOfDay, startOfMonth, endOfMonth } from 'date-fns';
+import { addDays, format as formatDate, startOfDay, startOfMonth, endOfMonth, isEqual } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { Employee, ScheduleData, ShiftCode, FilterState, DayOfWeek, ShiftType, ScheduleEntry } from './types';
-import { shiftTypeToHoursMap, daysOfWeek, availableRoles, availableShiftTypes, roleToEmojiMap as defaultRoleToEmojiMap, getTimeOptionsForDate } from './types'; // Import updated types and utils
-import { isEqual } from 'date-fns';
+import { availableRoles, availableShiftTypes, roleToEmojiMap as defaultRoleToEmojiMap, shiftCodeToDescription } from './types'; // Import shiftCodeToDescription
 
 type InitialFilterState = FilterState;
 
@@ -41,10 +39,10 @@ export function getDatesInRange(startDate: Date, endDate: Date): Date[] {
 export function getScheduleKey(employeeId: number, date: Date): string {
    if (!(date instanceof Date) || isNaN(date.getTime())) {
         console.error("Invalid date provided to getScheduleKey for employee:", employeeId);
-        const todayStr = format(new Date(), 'yyyy-MM-dd');
+        const todayStr = formatDate(new Date(), 'yyyy-MM-dd');
         return `${employeeId}-${todayStr}-invalidDate`;
     }
-  return `${employeeId}-${format(date, 'yyyy-MM-dd')}`;
+  return `${employeeId}-${formatDate(date, 'yyyy-MM-dd')}`;
 }
 
 // Function to generate initial data
@@ -106,29 +104,39 @@ export function generateInitialData(): {
       const dayIsHoliday = isInitialHoliday(date); // Check against initial holidays
 
       // Default entry structure
-      let entry: ScheduleEntry = { shift: 'F', role: '', baseHours: '', holidayReason: undefined };
+      let entry: ScheduleEntry = { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined }; // Default to FOLGA
 
-      // If it's a fixed day off, ensure it's 'F'
+      // If it's a fixed day off, it remains FOLGA
       if (isFixedDayOff) {
-          entry.shift = 'F';
+          entry.shift = 'FOLGA';
       }
-      // Otherwise, if not fixed day off, determine if 'T' based on defaults
+      // Otherwise, if not fixed day off, check if they have a default TRABALHA schedule
       else if (emp.defaultRole && emp.defaultShiftType && emp.defaultShiftType !== 'Nenhum') {
-            entry.shift = 'T';
+            entry.shift = 'TRABALHA';
             entry.role = emp.defaultRole;
             // Determine appropriate default hours based on day AND if it's a holiday
             const dayOptions = getTimeOptionsForDate(date, dayIsHoliday);
-            const defaultBase = shiftTypeToHoursMap[emp.defaultShiftType];
-             // Try to use the standard default, otherwise the first available option for that day
-            entry.baseHours = dayOptions.includes(defaultBase) ? defaultBase : (dayOptions[0] || '');
+            // const defaultBase = shiftTypeToHoursMap[emp.defaultShiftType]; // shiftTypeToHoursMap moved to types.ts
+             let defaultHour = ''; // Start with no specific hour
+              if (emp.defaultShiftType && emp.defaultShiftType !== 'Nenhum') {
+                  const basicDefault = shiftTypeToHoursMap[emp.defaultShiftType] || ''; // Get the basic default hour string
+                  if (dayOptions.includes(basicDefault)) { // Check if it's valid for the day
+                      defaultHour = basicDefault;
+                  }
+              }
+              // If no valid default hour was found or set, use the first available option
+              if (!defaultHour && dayOptions.length > 0) {
+                  defaultHour = dayOptions[0];
+              }
+              entry.baseHours = defaultHour;
        }
-       // If it's a holiday and the employee would otherwise be 'F' (not fixed, no default T),
-       // Consider setting to FF? Or leave as F? Let's leave as F for simplicity, FF can be set manually.
-       // if (dayIsHoliday && entry.shift === 'F') {
-       //    // Optional: Automatically set to FF?
-       //    // entry.shift = 'FF';
-       //    // entry.holidayReason = 'Feriado'; // Generic reason
-       // }
+      // If it's a holiday and the shift is currently FOLGA (not fixed, no default T),
+      // set it to FF.
+      if (dayIsHoliday && entry.shift === 'FOLGA') {
+           entry.shift = 'FF';
+           // Optional: Set a generic holiday reason or leave it empty for manual input
+           entry.holidayReason = 'Feriado';
+      }
 
       initialSchedule[key] = entry;
     });
@@ -150,9 +158,9 @@ export function generateWhatsAppText(
         return "*Erro: Data inválida selecionada.*";
     }
 
-    const dayName = format(date, 'EEEE', { locale: ptBR });
+    const dayName = formatDate(date, 'EEEE', { locale: ptBR });
     const capitalizedDayName = dayName.charAt(0).toUpperCase() + dayName.slice(1);
-    const formattedDate = format(date, `dd 'de' MMMM`, { locale: ptBR });
+    const formattedDate = formatDate(date, "dd 'de' MMMM", { locale: ptBR });
 
     let text = `📅 *Escala - ${capitalizedDayName}, ${formattedDate}${isHoliday ? ' (Feriado)' : ''}*\n\n`;
 
@@ -165,25 +173,25 @@ export function generateWhatsAppText(
         const key = getScheduleKey(emp.id, date);
         const entry = schedule[key];
 
-        if (!entry || entry.shift === 'F' || entry.shift === 'FF') {
+        if (!entry || entry.shift === 'FOLGA' || entry.shift === 'FF') {
             // Ensure entry exists for FF reason
             folgas.push({
-                code: entry?.shift || 'F',
+                code: entry?.shift || 'FOLGA', // Default to FOLGA if no entry
                 name: emp.name,
                 reason: entry?.shift === 'FF' ? entry.holidayReason : undefined
             });
-        } else if (entry.shift === 'T') {
+        } else if (entry.shift === 'TRABALHA') {
             hasAnyWorkShift = true;
             const role = entry.role || 'S/Função';
             const hours = entry.baseHours || 'S/Horário';
             let inferredShiftType: ShiftType | 'Outro' = 'Outro'; // Default to 'Outro'
 
-            // Basic inference logic based on typical start/end times
-            // This inference needs to be robust or match how shifts are categorized
-            const lowerHours = hours.toLowerCase().replace('h', '');
-             if (lowerHours.startsWith('10') || lowerHours.startsWith('11') || (lowerHours.startsWith('12') && (isHoliday || date.getDay() === 0))) inferredShiftType = 'Abertura';
-             else if (lowerHours.startsWith('12') && !lowerHours.endsWith('22') && !isHoliday && date.getDay() !== 0) inferredShiftType = 'Intermediário';
-             else if (lowerHours.includes('às 20') || lowerHours.includes('às 21') || lowerHours.includes('às 22')) inferredShiftType = 'Fechamento';
+            // Infer shift type based on typical start/end times
+            const lowerHours = hours.toLowerCase().replace(/h/g, ''); // Remove 'h' for easier parsing
+
+            if (lowerHours.startsWith('10') || lowerHours.startsWith('11') || (lowerHours.startsWith('12') && (isHoliday || date.getDay() === 0))) inferredShiftType = 'Abertura';
+            else if (lowerHours.startsWith('12') && !lowerHours.includes('às 22') && !isHoliday && date.getDay() !== 0 && date.getDay() !== 5 && date.getDay() !== 6) inferredShiftType = 'Intermediário'; // Added more specific condition for Intermediario
+            else if (lowerHours.includes('às 20') || lowerHours.includes('às 21') || lowerHours.includes('às 22')) inferredShiftType = 'Fechamento';
 
 
             if (!shifts[inferredShiftType]) shifts[inferredShiftType] = {};
@@ -199,33 +207,30 @@ export function generateWhatsAppText(
     shiftOrder.forEach(shiftType => {
         const roles = shifts[shiftType];
         if (roles && Object.keys(roles).length > 0) {
-             // Find a representative hour for the section header (first valid hour)
-             let representativeHour = '';
-             outerLoop:
-             for (const role in roles) {
-                for (const empData of roles[role]) {
-                    if (empData.hours && empData.hours !== 'S/Horário') {
-                        representativeHour = empData.hours;
-                        break outerLoop;
-                    }
-                }
-             }
+            // Find a representative hour for the section header (first valid hour)
+            let representativeHour = '';
+            outerLoop:
+            for (const role in roles) {
+               for (const empData of roles[role]) {
+                   if (empData.hours && empData.hours !== 'S/Horário') {
+                       representativeHour = empData.hours;
+                       break outerLoop;
+                   }
+               }
+            }
 
-             // Use emojis and formatting similar to the example
-             const headerEmoji = shiftType === 'Abertura' ? '☀️' : shiftType === 'Intermediário' ? '⏱️' : shiftType === 'Fechamento' ? '🌙' : '⏰';
-             // Display header only if the shift type is not 'Outro' or if 'Outro' is the only one with entries
-             const displayShiftType = shiftType !== 'Outro' ? shiftType : (Object.keys(shifts).length === 1 ? 'Turno' : '');
+            const headerEmoji = shiftType === 'Abertura' ? '☀️' : shiftType === 'Intermediário' ? '⏱️' : shiftType === 'Fechamento' ? '🌙' : '⏰';
+             // Use a display name that makes sense, default to 'Turno' if it's 'Outro' and others exist
+            let displayShiftTypeName = shiftType !== 'Outro' ? shiftType : (Object.keys(shifts).filter(k => k !== 'Outro' && shifts[k as keyof typeof shifts] && Object.keys(shifts[k as keyof typeof shifts]!).length > 0).length > 0 ? 'Outro' : 'Turno');
 
-             if (displayShiftType) {
-                 text += `${headerEmoji} *${displayShiftType}${representativeHour ? ` (${representativeHour})` : ''}*\n`;
-             }
-
+            // Only add header if there's a name (prevents empty 'Outro' header sometimes)
+             if (displayShiftTypeName) {
+                text += `${headerEmoji} *${displayShiftTypeName}${representativeHour ? ` (${representativeHour})` : ''}*\n`;
+            }
 
             Object.keys(roles).sort().forEach(role => {
                 const emoji = roleToEmojiMap[role] || '⚪';
-                // Sort employees within the role by name
                 roles[role].sort((a, b) => a.name.localeCompare(b.name)).forEach(empEntry => {
-                    // Include role only if different from previous line within same shift type? No, example shows it repeated.
                     text += `${emoji} ${role} - ${empEntry.name}${empEntry.hours && empEntry.hours !== 'S/Horário' ? ` - ${empEntry.hours}` : ''}\n`;
                 });
             });
@@ -235,10 +240,11 @@ export function generateWhatsAppText(
 
      // Add Folgas section if any
      if (folgas.length > 0) {
-         text += `🛌 *Folgas*\n`;
+         text += `🛌 *${shiftCodeToDescription['FOLGA']}s*\n`; // Use description from map
          // Sort folgas by name
          folgas.sort((a,b) => a.name.localeCompare(b.name)).forEach(folga => {
-             const folgaType = folga.code === 'FF' ? (folga.reason ? ` (${folga.reason})` : ' (Feriado)') : '';
+             // Use description for FF as well
+             const folgaType = folga.code === 'FF' ? ` (${folga.reason || shiftCodeToDescription['FF']})` : '';
              text += `😴 ${folga.name}${folgaType}\n`;
          });
          text += '\n';

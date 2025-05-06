@@ -309,6 +309,3 @@ Shift/Ctrl/Direito: Detalhes/Mudar Turno`;
     </Popover>
   );
 }
-
-// Helper function to format date (needed internally) - consider moving to utils if used elsewhere
-import { format } from 'date-fns';

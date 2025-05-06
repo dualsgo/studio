@@ -1,3 +1,5 @@
+import { startOfDay } from 'date-fns';
+
 export type ShiftType = 'Abertura' | 'Intermediário' | 'Fechamento' | 'Nenhum';
 export type DayOfWeek = "Domingo" | "Segunda" | "Terça" | "Quarta" | "Quinta" | "Sexta" | "Sábado";
 
@@ -42,12 +44,14 @@ export const availableShiftCodes: ShiftCode[] = ['TRABALHA', 'FOLGA', 'FF'];
 
 // Note: ShiftType (Abertura, etc.) is mainly used for *default* hour assignment.
 // The actual hours selected in the popover might vary based on the day's options.
+// Moved from utils.ts
 export const shiftTypeToHoursMap: Record<ShiftType, string> = {
-  'Abertura': '10h às 18h', // Example default, may vary by day
-  'Intermediário': '12h às 20h', // Example default, may vary by day
-  'Fechamento': '14h às 22h', // Example default, may vary by day
-  'Nenhum': '',
+    'Abertura': '10h às 18h', // Base default
+    'Intermediário': '12h às 20h', // Base default
+    'Fechamento': '14h às 22h', // Base default
+    'Nenhum': '',
 };
+
 
 // Specific time options based on day type
 export const mondayThursdayTimes = {
@@ -71,7 +75,27 @@ export const holidayTimes = {
     'Fechamento': ['14h às 20h', '15h às 21h'],
 };
 
-// DO NOT EXPORT this constant
+export function getTimeOptionsForDate(date: Date, isHoliday: boolean): string[] {
+  const day = date.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+
+  if (isHoliday) {
+    // Return holiday options
+    return Object.values(holidayTimes).flat();
+  } else {
+    switch (day) {
+      case 0: // Sunday
+        return Object.values(sundayTimes).flat();
+      case 5: // Friday
+      case 6: // Saturday
+        return Object.values(fridaySaturdayTimes).flat();
+      default: // Monday to Thursday
+        return Object.values(mondayThursdayTimes).flat();
+    }
+  }
+}
+
+// Define a unique, non-empty value for "None" options in Select
+// Moved from EditEmployeeDialog.tsx for broader use
 export const SELECT_NONE_VALUE = "--none--";
 
 // --- Constants ---
