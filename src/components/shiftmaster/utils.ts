@@ -1,7 +1,7 @@
 import { addDays, format as formatDate, startOfDay, startOfMonth, endOfMonth, isEqual } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { Employee, ScheduleData, ShiftCode, FilterState, DayOfWeek, ShiftType, ScheduleEntry } from './types';
-import { daysOfWeek, roleToEmojiMap as defaultRoleToEmojiMap, shiftCodeToDescription, getTimeOptionsForDate, shiftTypeToHoursMap } from './types'; // Import daysOfWeek and other needed types/constants
+import { daysOfWeek, roleToEmojiMap as defaultRoleToEmojiMap, shiftCodeToDescription, getTimeOptionsForDate, SELECT_NONE_VALUE } from './types'; // Import daysOfWeek and other needed types/constants
 
 type InitialFilterState = FilterState;
 
@@ -65,7 +65,7 @@ export function generateInitialData(): {
     { id: 3, name: 'Carla Dias', fixedDayOff: 'Quarta', defaultRole: 'Estoque', defaultShiftType: 'Fechamento' },
     { id: 4, name: 'Daniel Souza', defaultRole: 'Fiscal' },
     { id: 5, name: 'Eduarda Lima', defaultRole: 'Pacote', defaultShiftType: 'Abertura' },
-    { id: 6, name: 'Fábio Mendes', defaultRole: 'Organização', defaultShiftType: 'Intermediário'},
+    { id: 6, name: 'Fábio Mendes', fixedDayOff: 'Sexta', defaultRole: 'Organização', defaultShiftType: 'Intermediário'},
     { id: 7, name: 'Gabriela Rocha', fixedDayOff: 'Domingo', defaultRole: 'Vendas'},
     { id: 8, name: 'Hugo Pereira', defaultRole: 'Caixa', defaultShiftType: 'Fechamento' },
   ];
@@ -222,7 +222,7 @@ export function generateWhatsAppText(
 
             const headerEmoji = shiftType === 'Abertura' ? '☀️' : shiftType === 'Intermediário' ? '⏱️' : shiftType === 'Fechamento' ? '🌙' : '⏰';
              // Use a display name that makes sense, default to 'Turno' if it's 'Outro' and others exist
-            let displayShiftTypeName = shiftType !== 'Outro' ? shiftType : (Object.keys(shifts).filter(k => k !== 'Outro' && shifts[k as keyof typeof shifts] && Object.keys(shifts[k as keyof typeof shifts]!).length > 0).length > 0 ? 'Outro' : 'Turno');
+            let displayShiftTypeName = shiftType !== 'Outro' ? shiftType : (Object.keys(shifts).filter(k => k !== 'Outro' && shifts[k as keyof typeof shifts] && Object.keys(shifts[k as keyof typeof shifts]!).length > 0).length > 0 ? 'Turno' : '');
 
             // Only add header if there's a name (prevents empty 'Outro' header sometimes)
              if (displayShiftTypeName) {

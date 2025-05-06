@@ -44,14 +44,13 @@ export const availableShiftCodes: ShiftCode[] = ['TRABALHA', 'FOLGA', 'FF'];
 
 // Note: ShiftType (Abertura, etc.) is mainly used for *default* hour assignment.
 // The actual hours selected in the popover might vary based on the day's options.
-// Moved from utils.ts
+
 export const shiftTypeToHoursMap: Record<ShiftType, string> = {
-    'Abertura': '10h às 18h', // Base default
-    'Intermediário': '12h às 20h', // Base default
-    'Fechamento': '14h às 22h', // Base default
+    'Abertura': '10h às 18h',
+    'Intermediário': '12h às 20h',
+    'Fechamento': '14h às 22h',
     'Nenhum': '',
 };
-
 
 // Specific time options based on day type
 export const mondayThursdayTimes = {
