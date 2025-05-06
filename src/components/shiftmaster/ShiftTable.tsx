@@ -1,15 +1,17 @@
 
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
-import type { Employee, ScheduleData, ShiftCode } from './types';
+import React, { useMemo } from 'react';
+import type { Employee, ScheduleData, ShiftCode, ShiftType, DayOfWeek } from './types'; // Import necessary types
 import { ShiftCell } from './ShiftCell';
 import { getScheduleKey, getDatesInRange } from './utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { AlertTriangle } from 'lucide-react'; // Icon for violations
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; // Import Tooltip components
+import { AlertTriangle, Edit, Trash2 } from 'lucide-react'; // Import Edit and Trash2 icons
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Button } from '@/components/ui/button'; // Import Button for actions
+import { shiftTypeToHoursMap, availableRoles as defaultAvailableRoles } from './types'; // Import maps and constants
 
 interface ShiftTableProps {
   employees: Employee[];
@@ -17,11 +19,14 @@ interface ShiftTableProps {
   startDate: Date;
   endDate: Date;
   onShiftChange: (empId: number, date: Date, newShift: ShiftCode) => void;
-  onDetailChange: (empId: number, date: Date | null, field: 'role' | 'baseHours', value: string) => void; // Keep null for potential future use, even if base editing is removed
+  // Updated onDetailChange to handle default info potentially from Employee object
+  onDetailChange: (empId: number, date: Date, field: 'role' | 'baseHours', value: string) => void;
+  onEditEmployee: (employee: Employee) => void; // Handler to open edit dialog
+  onDeleteEmployee: (empId: number) => void; // Handler to trigger delete confirmation
 }
 
 // Define fixed available roles and base times outside component for stability
-const availableRoles = ['Caixa', 'Vendas', 'Estoque', 'Fiscal', 'Pacote', 'Organização'];
+// Combine common and Sunday times, let ShiftCell handle filtering if needed, or keep separate
 const commonTimes = ['10h–18h', '12h–20h', '14h–22h'];
 const sundayTimes = ['12h–20h', '13h–21h', '14h–20h', '15h–21h'];
 const weekendExtendedTimes = [...commonTimes, '10h-20h', '12h-22h', '14h-00h'];
@@ -33,9 +38,10 @@ export function ShiftTable({
   endDate,
   onShiftChange,
   onDetailChange,
+  onEditEmployee,
+  onDeleteEmployee,
 }: ShiftTableProps) {
-  const dates = getDatesInRange(startDate, endDate);
-  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const dates = useMemo(() => getDatesInRange(startDate, endDate), [startDate, endDate]);
 
    const getTimeOptions = (date: Date): string[] => {
        const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
@@ -94,11 +100,12 @@ export function ShiftTable({
        }
 
         // 3. Fixed Day Off Check
-        const fixedDayMapping: { [key: string]: number } = {
-             "Domingo": 0, "Segunda": 1, "Terça": 2, "Quarta": 3, "Quinta": 4, "Sexta": 5, "Sábado": 6
-         };
-        const fixedDayNum = fixedDayMapping[employee.fixedDayOff || ""];
-        const fixedDayOffViolation = fixedDayNum !== undefined && date.getDay() === fixedDayNum && currentShift === 'T';
+        const dayOfWeek = date.getDay(); // 0..6
+        const fixedDayMapping: { [key in DayOfWeek]?: number } = {
+            "Domingo": 0, "Segunda": 1, "Terça": 2, "Quarta": 3, "Quinta": 4, "Sexta": 5, "Sábado": 6
+        };
+        const fixedDayNum = employee.fixedDayOff ? fixedDayMapping[employee.fixedDayOff] : undefined;
+        const fixedDayOffViolation = fixedDayNum !== undefined && dayOfWeek === fixedDayNum && currentShift === 'T';
 
 
        return {
@@ -110,14 +117,16 @@ export function ShiftTable({
 
 
   return (
-    <div ref={tableContainerRef} className="relative overflow-auto w-full h-full">
+    <div className="relative overflow-auto w-full h-full">
       <Table className="min-w-full border-collapse relative">
         <TableHeader className="sticky top-0 z-10 bg-background shadow-sm">
             <TableRow>
               <TableHead className="sticky left-0 z-20 bg-background p-2 border w-40 min-w-[160px] text-center font-semibold">
                 Colaborador
               </TableHead>
-              {/* Base Role and Base Hours Columns Removed */}
+               <TableHead className="sticky left-[160px] z-20 bg-background p-2 border w-24 min-w-[96px] text-center font-semibold"> {/* Adjust left offset */}
+                 Ações
+               </TableHead>
               {dates.map(date => (
                 <TableHead key={date.toISOString()} className="p-2 border w-24 min-w-[96px] text-center font-semibold">
                   {format(date, 'EEE dd/MM', { locale: ptBR })}
@@ -128,22 +137,51 @@ export function ShiftTable({
          <TableBody>
           {employees.length === 0 ? (
              <TableRow>
-                 {/* Adjusted colSpan */}
-                <TableCell colSpan={dates.length + 1} className="text-center p-8 text-muted-foreground">
-                    Nenhum colaborador encontrado para os filtros selecionados.
+                 {/* Adjusted colSpan to account for Actions column */}
+                <TableCell colSpan={dates.length + 2} className="text-center p-8 text-muted-foreground">
+                    Nenhum colaborador encontrado para os filtros selecionados ou nenhum colaborador cadastrado.
                 </TableCell>
             </TableRow>
           ) : (
             employees.map(emp => (
-                <TableRow key={emp.id} className="hover:bg-muted/10">
-                  <TableCell className="sticky left-0 z-10 bg-background p-2 border font-medium whitespace-nowrap w-40 min-w-[160px]">
+                <TableRow key={emp.id} className="hover:bg-muted/10 group">
+                  {/* Employee Name Cell */}
+                  <TableCell className="sticky left-0 z-10 bg-background group-hover:bg-muted/10 p-2 border font-medium whitespace-nowrap w-40 min-w-[160px]">
                       {emp.name}
-                       {/* Display Fixed Day Off */}
-                       {emp.fixedDayOff && (
-                         <span className="block text-xs text-muted-foreground">Folga Fixa: {emp.fixedDayOff}</span>
-                       )}
+                       {/* Fixed Day Off info removed, handled in edit dialog */}
                   </TableCell>
-                  {/* Base Role and Base Hours Select Cells Removed */}
+
+                   {/* Actions Cell */}
+                   <TableCell className="sticky left-[160px] z-10 bg-background group-hover:bg-muted/10 p-1 border w-24 min-w-[96px] text-center"> {/* Adjust left offset */}
+                      <div className="flex justify-center items-center space-x-1">
+                           <TooltipProvider delayDuration={100}>
+                               <Tooltip>
+                                   <TooltipTrigger asChild>
+                                       <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onEditEmployee(emp)}>
+                                           <Edit className="h-4 w-4" />
+                                       </Button>
+                                   </TooltipTrigger>
+                                   <TooltipContent side="top">
+                                       <p>Editar Colaborador</p>
+                                   </TooltipContent>
+                               </Tooltip>
+                           </TooltipProvider>
+                          <TooltipProvider delayDuration={100}>
+                              <Tooltip>
+                                  <TooltipTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive/90" onClick={() => onDeleteEmployee(emp.id)}>
+                                          <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="bg-destructive text-destructive-foreground">
+                                      <p>Remover Colaborador</p>
+                                  </TooltipContent>
+                              </Tooltip>
+                          </TooltipProvider>
+                      </div>
+                  </TableCell>
+
+                  {/* Schedule Cells */}
                   {dates.map(date => {
                     const key = getScheduleKey(emp.id, date);
                     const cellData = schedule[key];
@@ -151,11 +189,25 @@ export function ShiftTable({
                     const hasViolation = violations.consecutiveDays || violations.consecutiveSundays || violations.fixedDayOff;
 
                     // Determine role and hours to pass to ShiftCell
-                    // Use scheduled data if available, otherwise defaults (empty string for 'D'/'F')
                     const currentShift = cellData?.shift || 'D';
-                    const roleForCell = (currentShift === 'T' || currentShift === 'H') ? (cellData?.role || '') : '';
-                    const hoursForCell = (currentShift === 'T' || currentShift === 'H') ? (cellData?.baseHours || '') : '';
+                    let roleForCell = '';
+                    let hoursForCell = '';
 
+                    if (currentShift === 'T' || currentShift === 'H') {
+                         roleForCell = cellData?.role || ''; // Use scheduled if available
+                         hoursForCell = cellData?.baseHours || ''; // Use scheduled if available
+
+                         // If scheduled role/hours are empty for T/H, try using employee defaults
+                         if (!roleForCell && emp.defaultRole) {
+                             roleForCell = emp.defaultRole;
+                         }
+                         if (!hoursForCell && emp.defaultShiftType && emp.defaultShiftType !== 'Nenhum') {
+                            hoursForCell = shiftTypeToHoursMap[emp.defaultShiftType];
+                            // Optionally auto-update schedule state here if needed, but might be better in ShiftCell interaction
+                            // onDetailChange(emp.id, date, 'role', roleForCell);
+                            // onDetailChange(emp.id, date, 'baseHours', hoursForCell);
+                         }
+                     }
 
                     return (
                       <TableCell key={date.toISOString()} className="p-0 border w-24 min-w-[96px] h-14 relative">
@@ -177,10 +229,10 @@ export function ShiftTable({
                           )}
                         <ShiftCell
                           shift={currentShift}
-                          role={roleForCell} // Pass determined role
-                          baseHours={hoursForCell} // Pass determined hours
+                          role={roleForCell} // Pass determined/default role
+                          baseHours={hoursForCell} // Pass determined/default hours
                           date={date}
-                          availableRoles={availableRoles} // Pass available roles
+                          availableRoles={defaultAvailableRoles} // Pass available roles
                           availableTimes={getTimeOptions(date)} // Pass dynamic time options
                           onChange={(newShift) => onShiftChange(emp.id, date, newShift)}
                           onDetailChange={(field, value) => onDetailChange(emp.id, date, field, value)}

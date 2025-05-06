@@ -1,9 +1,14 @@
 
+
+export type ShiftType = 'Abertura' | 'Intermediário' | 'Fechamento' | 'Nenhum'; // Added 'Nenhum' for optional default
+export type DayOfWeek = "Domingo" | "Segunda" | "Terça" | "Quarta" | "Quinta" | "Sexta" | "Sábado";
+
 export interface Employee {
   id: number;
   name: string;
-  // baseRole and baseHours removed
-  fixedDayOff?: "Domingo" | "Segunda" | "Terça" | "Quarta" | "Quinta" | "Sexta" | "Sábado"; // Optional fixed day off
+  fixedDayOff?: DayOfWeek | ""; // Optional fixed day off, allow empty string for 'None'
+  defaultRole?: string; // Optional default role
+  defaultShiftType?: ShiftType; // Optional default shift type
 }
 
 export type ShiftCode = 'T' | 'F' | 'H' | 'D'; // Trabalha, Folga, Horário Especial, Disponível
@@ -23,3 +28,15 @@ export interface FilterState {
   startDate: Date;
   endDate: Date;
 }
+
+// Map ShiftType to baseHours
+export const shiftTypeToHoursMap: Record<ShiftType, string> = {
+  'Abertura': '10h–18h',
+  'Intermediário': '12h–20h',
+  'Fechamento': '14h–22h',
+  'Nenhum': '', // No specific hours for 'Nenhum'
+};
+
+export const availableRoles = ['Caixa', 'Vendas', 'Estoque', 'Fiscal', 'Pacote', 'Organização', 'Outro']; // Added 'Outro'
+export const daysOfWeek: DayOfWeek[] = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+export const availableShiftTypes: ShiftType[] = ['Abertura', 'Intermediário', 'Fechamento', 'Nenhum'];

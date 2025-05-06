@@ -1,6 +1,7 @@
 
 import { addDays, format, startOfDay } from 'date-fns';
-import type { Employee, ScheduleData, ShiftCode, FilterState } from './types';
+import type { Employee, ScheduleData, ShiftCode, FilterState, DayOfWeek, ShiftType } from './types';
+import { shiftTypeToHoursMap, daysOfWeek, availableRoles, availableShiftTypes } from './types'; // Import maps and constants
 
 // Define type without 'store' for initial filters
 type InitialFilterState = Omit<FilterState, 'store'>;
@@ -55,15 +56,15 @@ export function generateInitialData(): {
   initialFilters: InitialFilterState; // Use the type without 'store'
 } {
   const initialEmployees: Employee[] = [
-    // Base Role and Base Hours properties removed
-    { id: 1, name: 'Alice Silva', fixedDayOff: 'Segunda' },
-    { id: 2, name: 'Bruno Costa' },
-    { id: 3, name: 'Carla Dias', fixedDayOff: 'Quarta' },
-    { id: 4, name: 'Daniel Souza' },
-    { id: 5, name: 'Eduarda Lima' },
-    { id: 6, name: 'Fábio Mendes' },
-    { id: 7, name: 'Gabriela Rocha', fixedDayOff: 'Domingo' },
-    { id: 8, name: 'Hugo Pereira' },
+    // Base Role and Base Hours properties removed, added defaults
+    { id: 1, name: 'Alice Silva', fixedDayOff: 'Segunda', defaultRole: 'Vendas', defaultShiftType: 'Abertura' },
+    { id: 2, name: 'Bruno Costa', defaultRole: 'Caixa', defaultShiftType: 'Intermediário' },
+    { id: 3, name: 'Carla Dias', fixedDayOff: 'Quarta', defaultRole: 'Estoque', defaultShiftType: 'Fechamento' },
+    { id: 4, name: 'Daniel Souza', defaultRole: 'Fiscal' }, // No default shift type
+    { id: 5, name: 'Eduarda Lima', defaultRole: 'Pacote', defaultShiftType: 'Abertura' },
+    { id: 6, name: 'Fábio Mendes', defaultRole: 'Organização', defaultShiftType: 'Intermediário'},
+    { id: 7, name: 'Gabriela Rocha', fixedDayOff: 'Domingo', defaultRole: 'Vendas'},
+    { id: 8, name: 'Hugo Pereira', defaultRole: 'Caixa', defaultShiftType: 'Fechamento' },
   ];
 
   const initialSchedule: ScheduleData = {};
@@ -80,37 +81,77 @@ export function generateInitialData(): {
     for (let i = 0; i < 7; i++) {
       const date = addDays(today, i);
       const key = getScheduleKey(emp.id, date);
-      // Simple initial assignment (e.g., work Mon-Fri, off Sat/Sun)
-      // Respect Fixed Day Off
-      const dayOfWeek = date.getDay();
-      const fixedDayMapping: { [key: string]: number } = { "Domingo": 0, "Segunda": 1, "Terça": 2, "Quarta": 3, "Quinta": 4, "Sexta": 5, "Sábado": 6 };
-      const fixedDayNum = fixedDayMapping[emp.fixedDayOff || ""];
+
+      const dayOfWeek = date.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+      const fixedDayMapping: { [key in DayOfWeek]?: number } = {};
+       daysOfWeek.forEach((day, index) => fixedDayMapping[day] = index); // Populate mapping
+
+      const fixedDayNum = emp.fixedDayOff ? fixedDayMapping[emp.fixedDayOff] : undefined;
       let shift: ShiftCode = 'D'; // Default to Disponible
-      let role = ''; // Default empty role
-      let baseHours = ''; // Default empty hours
+      let role = '';
+      let baseHours = '';
 
        if (fixedDayNum !== undefined && dayOfWeek === fixedDayNum) {
            shift = 'F'; // Assign Folga on fixed day off
        } else if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Example: Work weekdays
-            shift = 'T';
-            // Assign a default role/hour for initial 'T' shifts or leave empty
-            // Example: Assign first available role and time
-            // role = 'Vendas';
-            // baseHours = '10h–18h';
+            // Pre-fill with 'T' and default info only if defaults exist
+            if (emp.defaultRole && emp.defaultShiftType && emp.defaultShiftType !== 'Nenhum') {
+                 shift = 'T';
+                 role = emp.defaultRole;
+                 baseHours = shiftTypeToHoursMap[emp.defaultShiftType];
+             } else {
+                 shift = 'D'; // Otherwise, leave as Disponible
+             }
        } else {
-            shift = 'F'; // Example: Off weekends
+            shift = 'F'; // Example: Off weekends by default if not fixed day off
        }
 
 
       // Assign initial schedule entry
        initialSchedule[key] = {
          shift: shift,
-         role: role, // Assign determined role
-         baseHours: baseHours, // Assign determined hours
+         role: role,
+         baseHours: baseHours,
        };
     }
   });
 
 
   return { initialEmployees, initialSchedule, initialFilters };
+}
+
+
+// Helper function to generate WhatsApp text for a specific date
+export function generateWhatsAppText(
+    date: Date,
+    employees: Employee[],
+    schedule: ScheduleData
+): string {
+    const formattedDate = format(date, 'EEEE, dd/MM/yyyy', { locale: require('date-fns/locale/pt-BR') });
+    let text = `*Escala do Dia: ${formattedDate}*\n\n`;
+    let hasEntries = false;
+
+    employees.forEach(emp => {
+        const key = getScheduleKey(emp.id, date);
+        const entry = schedule[key];
+
+        if (entry && entry.shift === 'T') { // Only include employees working ('T')
+            text += `- *${emp.name}:* ${entry.role} (${entry.baseHours})\n`;
+            hasEntries = true;
+        } else if (entry && entry.shift === 'H') { // Also include special hours ('H')
+            text += `- *${emp.name}:* ${entry.role} (${entry.baseHours}) - *HORÁRIO ESPECIAL*\n`;
+            hasEntries = true;
+        }
+         // Optionally include Folga ('F')
+         // else if (entry && entry.shift === 'F') {
+         //     text += `- *${emp.name}:* Folga\n`;
+         //     hasEntries = true;
+         // }
+    });
+
+    if (!hasEntries) {
+        text += "Ninguém escalado para trabalho neste dia.";
+    }
+
+    return text;
 }

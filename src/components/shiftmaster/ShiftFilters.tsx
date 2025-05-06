@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -23,7 +24,7 @@ interface ShiftFiltersProps {
 }
 
 // Define a constant for the "all" value to avoid magic strings
-const ALL_VALUE = "all";
+const ALL_VALUE = "all"; // Use a non-empty, unique value
 
 export function ShiftFilters({
   filters,
@@ -45,7 +46,7 @@ export function ShiftFilters({
       onFilterChange({ [name]: date });
     } else {
       // Handle cases where date might be cleared, if applicable by your UI design
-      // onFilterChange({ [name]: undefined }); // Or null, depending on FilterState type
+       onFilterChange({ [name]: undefined }); // Or null, depending on FilterState type
     }
   };
 
@@ -72,7 +73,7 @@ export function ShiftFilters({
                    {/* Add search input here if needed */}
                    {/* <div className="p-2"><Input placeholder="Buscar..." /></div> */}
                   {employees.map(emp => (
-                    <SelectItem key={emp.id} value={emp.id.toString()}>{emp.name}</SelectItem>
+                    <SelectItem key={`emp-${emp.id}`} value={emp.id.toString()}>{emp.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -88,7 +89,7 @@ export function ShiftFilters({
                 <SelectContent>
                   <SelectItem value={ALL_VALUE}>Todas</SelectItem>
                   {roles.map(role => (
-                    <SelectItem key={role} value={role}>{role}</SelectItem>
+                    <SelectItem key={`role-${role}`} value={role}>{role}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

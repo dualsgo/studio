@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useCallback } from 'react';
@@ -7,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Clock, Briefcase, Edit2 } from 'lucide-react'; // Icons for details
+import { Label } from "@/components/ui/label"; // Import Label
 
 interface ShiftCellProps {
   shift: ShiftCode;
@@ -42,7 +44,17 @@ export function ShiftCell({
 }: ShiftCellProps) {
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
 
-  const handleClick = useCallback(() => {
+  const handleClick = useCallback((event: React.MouseEvent) => {
+    // Only cycle shift if not clicking on the edit icon area implicitly
+     if ((event.target as HTMLElement).closest('svg[data-edit-icon="true"]')) {
+         return; // Don't cycle if clicking near the icon
+     }
+     // Allow opening popover with Shift+Click
+     if (event.shiftKey && (shift === 'T' || shift === 'H')) {
+         setIsPopoverOpen(true);
+         return; // Prevent cycling
+     }
+
     const currentIndex = shiftCycle.indexOf(shift);
     const nextIndex = (currentIndex + 1) % shiftCycle.length;
     onChange(shiftCycle[nextIndex]);
@@ -51,20 +63,28 @@ export function ShiftCell({
   // Prevent context menu
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    // Could implement right-click specific logic here if needed, like opening the popover
-    // setIsPopoverOpen(true);
-  }, []);
+    // Open popover on right-click (or Ctrl+Click/Meta+Click) for T and H shifts
+    if ((e.ctrlKey || e.metaKey || e.button === 2) && (shift === 'T' || shift === 'H')) {
+        setIsPopoverOpen(true);
+    }
+  }, [shift]);
 
 
   const handleRoleChange = (value: string) => {
-    onDetailChange('role', value);
-    // setIsPopoverOpen(false); // Optionally close popover after selection
+    // Treat a special value like "none" or a specific placeholder value as clearing the role
+    onDetailChange('role', value === "select-none" ? "" : value);
+    // setIsPopoverOpen(false); // Keep open for easier multi-editing
   };
 
   const handleTimeChange = (value: string) => {
-    onDetailChange('baseHours', value);
-    // setIsPopoverOpen(false); // Optionally close popover after selection
+     onDetailChange('baseHours', value === "select-none" ? "" : value);
+    // setIsPopoverOpen(false); // Keep open
   };
+
+  const handleOpenPopover = (e: React.MouseEvent) => {
+     e.stopPropagation(); // Prevent click from bubbling to the cell's main click handler
+     setIsPopoverOpen(true);
+   };
 
 
   return (
@@ -72,66 +92,76 @@ export function ShiftCell({
       <PopoverTrigger asChild>
         <div
           className={cn(
-            'w-full h-full flex flex-col items-center justify-center cursor-pointer text-xs p-1 select-none relative transition-colors duration-150 ease-in-out',
+            'w-full h-full flex flex-col items-center justify-center cursor-pointer text-xs p-1 select-none relative transition-colors duration-150 ease-in-out group', // Added group for hover state on icon
             shiftStyles[shift],
             hasViolation && shift === 'T' ? 'ring-2 ring-offset-1 ring-yellow-500' : '', // Visual cue for violation on 'T' cells
             'hover:brightness-90 dark:hover:brightness-110'
           )}
           onClick={handleClick}
           onContextMenu={handleContextMenu}
-          title={`Clique para alterar estado. Shift+Clique para editar detalhes.`} // Tooltip updated
+          title={`Clique: Alterar Estado | Shift+Clique ou Botão Direito: Editar | Ícone: Editar`} // Updated tooltip
         >
            <span className="font-semibold text-sm">{shift}</span>
            {(shift === 'T' || shift === 'H') && (
              <>
-               <span className="block truncate text-[10px] opacity-80">{role}</span>
-               <span className="block truncate text-[10px] opacity-80">{baseHours}</span>
+               <span className="block truncate text-[10px] opacity-80">{role || 'Sem função'}</span>
+               <span className="block truncate text-[10px] opacity-80">{baseHours || 'Sem horário'}</span>
              </>
            )}
             {/* Small edit icon to hint at popover */}
             {(shift === 'T' || shift === 'H') && (
-                 <Edit2 className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 opacity-50 group-hover:opacity-100" />
+                 <button
+                     data-edit-icon="true" // Add data attribute
+                     onClick={handleOpenPopover}
+                     className="absolute bottom-0.5 right-0.5 p-0.5 rounded-sm hover:bg-black/10 dark:hover:bg-white/10 focus:outline-none focus:ring-1 focus:ring-ring"
+                     aria-label="Editar detalhes"
+                 >
+                    <Edit2 className="h-2.5 w-2.5 opacity-50 group-hover:opacity-100" />
+                 </button>
             )}
         </div>
       </PopoverTrigger>
       <PopoverContent className="w-48 p-2">
         <div className="space-y-2">
           <p className="text-sm font-medium">Editar Detalhes</p>
+          {/* Role Select */}
           <div className="space-y-1">
             <Label htmlFor={`role-select-${date.toISOString()}`} className="text-xs">Função</Label>
-            <Select value={role} onValueChange={handleRoleChange}>
+            <Select value={role || "select-none"} onValueChange={handleRoleChange}>
               <SelectTrigger id={`role-select-${date.toISOString()}`} className="h-8 text-xs">
                  <Briefcase className="mr-1 h-3 w-3" />
                 <SelectValue placeholder="Função" />
               </SelectTrigger>
               <SelectContent>
+                {/* Add a "None" option if role can be empty */}
+                <SelectItem value="select-none" key="role-none">Nenhuma</SelectItem>
                 {availableRoles.map(r => (
-                  <SelectItem key={r} value={r} className="text-xs">{r}</SelectItem>
+                  <SelectItem key={`role-opt-${r}`} value={r} className="text-xs">{r}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+           {/* Time Select */}
           <div className="space-y-1">
             <Label htmlFor={`time-select-${date.toISOString()}`} className="text-xs">Horário</Label>
-            <Select value={baseHours} onValueChange={handleTimeChange}>
+            <Select value={baseHours || "select-none"} onValueChange={handleTimeChange}>
               <SelectTrigger id={`time-select-${date.toISOString()}`} className="h-8 text-xs">
                 <Clock className="mr-1 h-3 w-3" />
                 <SelectValue placeholder="Horário" />
               </SelectTrigger>
               <SelectContent>
+                 {/* Add a "None" option if hours can be empty */}
+                 <SelectItem value="select-none" key="time-none">Nenhum</SelectItem>
                 {availableTimes.map(t => (
-                  <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>
+                  <SelectItem key={`time-opt-${t}`} value={t} className="text-xs">{t}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-           {/* Close button might be useful */}
-           {/* <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => setIsPopoverOpen(false)}>Fechar</Button> */}
+           {/* Close button */}
+           <Button variant="outline" size="sm" className="w-full mt-2 text-xs h-7" onClick={() => setIsPopoverOpen(false)}>Fechar</Button>
         </div>
       </PopoverContent>
     </Popover>
   );
 }
-
-// Need Label component
-import { Label } from "@/components/ui/label";
