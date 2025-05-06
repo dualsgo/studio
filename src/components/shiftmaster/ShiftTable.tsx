@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { AlertTriangle, Edit, Trash2, CalendarHeart } from 'lucide-react'; // Added CalendarHeart for holiday toggle
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from '@/components/ui/button';
-import { shiftTypeToHoursMap, availableRoles as defaultAvailableRoles, shiftCodeToDescription } from './types'; // Import maps and constants
+import { shiftCodeToDescription } from './types'; // Import shiftCodeToDescription
 import { cn } from '@/lib/utils'; // Import cn
 
 interface ShiftTableProps {
@@ -58,8 +58,8 @@ export function ShiftTable({
         const key = getScheduleKey(empId, date);
         const currentShift = schedule[key]?.shift;
 
-        // Violations only apply if the shift is 'T' (Trabalha)
-        if (currentShift !== 'T') {
+        // Violations only apply if the shift is 'TRABALHA'
+        if (currentShift !== 'TRABALHA') {
             return { consecutiveDays: false, consecutiveSundays: false, fixedDayOff: false };
         }
 
@@ -67,7 +67,7 @@ export function ShiftTable({
         let consecutiveDaysCount = 1; // Start with 1 for the current date
         for (let i = 1; i <= 6; i++) { // Check previous 6 days
             const checkDate = addDays(date, -i);
-            if (schedule[getScheduleKey(empId, checkDate)]?.shift === 'T') {
+            if (schedule[getScheduleKey(empId, checkDate)]?.shift === 'TRABALHA') {
                  consecutiveDaysCount++;
             } else {
                  break; // Stop if a non-T day is found
@@ -82,7 +82,7 @@ export function ShiftTable({
            let consecutiveSundaysCount = 1; // Start with 1 for the current Sunday
            for (let i = 1; i <= 3; i++) { // Check previous 3 Sundays
                const checkSunday = addDays(date, -i * 7);
-               if (schedule[getScheduleKey(empId, checkSunday)]?.shift === 'T') {
+               if (schedule[getScheduleKey(empId, checkSunday)]?.shift === 'TRABALHA') {
                     consecutiveSundaysCount++;
                } else {
                     break; // Stop if a previous Sunday wasn't 'T'
@@ -109,16 +109,16 @@ export function ShiftTable({
 
 
   return (
-    <div className="relative overflow-x-auto w-full h-full"> {/* Allow horizontal scroll */}
-      <Table className="min-w-full border-collapse relative table-auto"> {/* Use table-auto for content-based width */}
+    <div className="relative overflow-x-auto w-full h-full">
+      <Table className="min-w-full border-collapse relative table-auto">
         <TableHeader className="sticky top-0 z-10 bg-card shadow-sm">
             <TableRow>
               {/* Sticky Employee Name Header */}
-              <TableHead className="sticky left-0 z-20 bg-card p-1 sm:p-2 border text-xs sm:text-sm text-center font-semibold whitespace-nowrap w-auto min-w-[100px]"> {/* Adjust width */}
+              <TableHead className="sticky left-0 z-20 bg-card p-1 sm:p-2 border text-xs sm:text-sm text-center font-semibold whitespace-nowrap w-auto min-w-[100px]">
                 Colaborador
               </TableHead>
               {/* Sticky Actions Header */}
-               <TableHead className="sticky left-[calc(100px+theme(spacing.px))] md:left-[calc(120px+theme(spacing.px))] z-20 bg-card p-1 border w-16 min-w-[64px] max-w-[64px] text-center font-semibold text-xs sm:text-sm"> {/* Adjust width/left offset */}
+               <TableHead className="sticky left-[calc(100px+theme(spacing.px))] md:left-[calc(120px+theme(spacing.px))] z-20 bg-card p-1 border w-16 min-w-[64px] max-w-[64px] text-center font-semibold text-xs sm:text-sm">
                  Ações
                </TableHead>
               {/* Date Headers */}
@@ -213,10 +213,10 @@ export function ShiftTable({
                     const cellData = schedule[key]; // Might be undefined
                     const violations = checkViolations(emp.id, date);
                     const holidayStatus = isHoliday(date);
-                    const hasViolation = cellData?.shift === 'T' && (violations.consecutiveDays || violations.consecutiveSundays || violations.fixedDayOff);
+                    const hasViolation = cellData?.shift === 'TRABALHA' && (violations.consecutiveDays || violations.consecutiveSundays || violations.fixedDayOff);
 
-                    // Ensure we have a valid ScheduleEntry object or a default 'F'
-                    const scheduleEntry: ScheduleEntry = cellData || { shift: 'F', role: '', baseHours: '', holidayReason: undefined };
+                    // Ensure we have a valid ScheduleEntry object or a default 'FOLGA'
+                    const scheduleEntry: ScheduleEntry = cellData || { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined };
 
                     return (
                       <TableCell key={date.toISOString()} className={cn(
@@ -261,32 +261,6 @@ export function ShiftTable({
             )}
         </TableBody>
       </Table>
-       {/* Legend */}
-       <div className="mt-4 p-2 border rounded bg-card text-sm">
-            <h4 className="font-semibold mb-2">Legenda:</h4>
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-                {/* Use availableShiftCodes from types.ts to generate legend dynamically */}
-                {Object.entries(shiftCodeToDescription).map(([code, description]) => (
-                    <div key={code} className="flex items-center gap-2">
-                        <span className={cn(
-                            'inline-block w-3 h-3 rounded-sm',
-                            code === 'T' ? 'bg-destructive' : '',
-                            code === 'F' ? 'bg-muted' : '',
-                            code === 'FF' ? 'bg-accent' : '',
-                        )}></span>
-                        <span>{code}: {description}</span>
-                    </div>
-                ))}
-                 <div className="flex items-center gap-2">
-                     <CalendarHeart className="h-3 w-3 text-primary" />
-                     <span>Dia marcado como Feriado</span>
-                 </div>
-                <div className="flex items-center gap-2">
-                    <AlertTriangle className="h-3 w-3 text-yellow-500" />
-                    <span>Violação de Regra</span>
-                </div>
-            </div>
-        </div>
     </div>
   );
 }
