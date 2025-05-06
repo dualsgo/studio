@@ -1,7 +1,6 @@
 import { addDays, format as formatDate, startOfDay, startOfMonth, endOfMonth, isEqual } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { Employee, ScheduleData, ShiftCode, FilterState, DayOfWeek, ShiftType, ScheduleEntry } from './types';
-import { daysOfWeek, roleToEmojiMap as defaultRoleToEmojiMap, shiftCodeToDescription, getTimeOptionsForDate, SELECT_NONE_VALUE } from './types'; // Import daysOfWeek and other needed types/constants
 
 type InitialFilterState = FilterState;
 
@@ -120,9 +119,14 @@ export function generateInitialData(): {
             // const defaultBase = shiftTypeToHoursMap[emp.defaultShiftType]; // shiftTypeToHoursMap moved to types.ts
              let defaultHour = ''; // Start with no specific hour
               if (emp.defaultShiftType && emp.defaultShiftType !== 'Nenhum') {
-                  const basicDefault = shiftTypeToHoursMap[emp.defaultShiftType] || ''; // Get the basic default hour string
-                  if (dayOptions.includes(basicDefault)) { // Check if it's valid for the day
-                      defaultHour = basicDefault;
+                  // If is holiday
+                  if (dayIsHoliday) {
+                     defaultHour = (Object.values(holidayTimes).flat())[0];
+                  } else {
+                    defaultHour = shiftTypeToHoursMap[emp.defaultShiftType] || ''; // Get the basic default hour string
+                  }
+                  if (dayOptions.includes(defaultHour)) { // Check if it's valid for the day
+                      defaultHour = defaultHour;
                   }
               }
               // If no valid default hour was found or set, use the first available option
@@ -167,7 +171,7 @@ export function generateWhatsAppText(
 
     // Group employees by shift type inferred from hours, then by role
     const shifts: { [key in ShiftType | 'Outro']?: { [role: string]: { name: string; hours: string }[] } } = {};
-    const folgas: { code: ShiftCode; name: string; reason?: string }[] = [];
+    const folgas: { [key in ShiftCode]?: { name: string; reason?: string }[] } = {};
     let hasAnyWorkShift = false;
 
     employees.forEach(emp => {
@@ -175,11 +179,12 @@ export function generateWhatsAppText(
         const entry = schedule[key];
 
         if (!entry || entry.shift === 'FOLGA' || entry.shift === 'FF') {
-            // Ensure entry exists for FF reason
-            folgas.push({
-                code: entry?.shift || 'FOLGA', // Default to FOLGA if no entry
+            // Group by Folga or Folga Feriado
+            const shiftType = entry?.shift || 'FOLGA';
+            if (!folgas[shiftType]) folgas[shiftType] = [];
+            folgas[shiftType]!.push({
                 name: emp.name,
-                reason: entry?.shift === 'FF' ? entry.holidayReason : undefined
+                reason: entry?.holidayReason
             });
         } else if (entry.shift === 'TRABALHA') {
             hasAnyWorkShift = true;
@@ -240,19 +245,20 @@ export function generateWhatsAppText(
     });
 
      // Add Folgas section if any
-     if (folgas.length > 0) {
-         text += `🛌 *${shiftCodeToDescription['FOLGA']}s*\n`; // Use description from map
-         // Sort folgas by name
-         folgas.sort((a,b) => a.name.localeCompare(b.name)).forEach(folga => {
-             // Use description for FF as well
-             const folgaType = folga.code === 'FF' ? ` (${folga.reason || shiftCodeToDescription['FF']})` : '';
-             text += `😴 ${folga.name}${folgaType}\n`;
-         });
-         text += '\n';
+     if (Object.keys(folgas).length > 0) {
+        // Iterate over each type of Folga (FOLGA, FF)
+        for (const shiftType in folgas) {
+            text += `🛌 *${shiftCodeToDescription[shiftType as ShiftCode]}s:*\n`; // Use description from map
+            folgas[shiftType]!.sort((a, b) => a.name.localeCompare(b.name)).forEach(folga => {
+                const folgaType = shiftType === 'FF' ? ` (${folga.reason || 'Feriado'})` : '';
+                text += `😴 ${folga.name}${folgaType}\n`;
+            });
+            text += '\n';
+        }
      }
 
 
-    if (!hasAnyWorkShift && folgas.length === 0) {
+    if (!hasAnyWorkShift && Object.keys(folgas).length === 0) {
         text += "_Nenhuma informação de escala para este dia._";
     }
 

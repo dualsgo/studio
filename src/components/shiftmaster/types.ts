@@ -1,4 +1,5 @@
-import { startOfDay } from 'date-fns';
+import { addDays, format as formatDate, startOfDay, startOfMonth, endOfMonth, isEqual } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 export type ShiftType = 'Abertura' | 'Intermediário' | 'Fechamento' | 'Nenhum';
 export type DayOfWeek = "Domingo" | "Segunda" | "Terça" | "Quarta" | "Quinta" | "Sexta" | "Sábado";
@@ -40,12 +41,16 @@ export const shiftCodeToDescription: Record<ShiftCode, string> = {
 // Note: Direct cycling in ShiftCell is only T <-> F. FF is set via popover.
 export const availableShiftCodes: ShiftCode[] = ['TRABALHA', 'FOLGA', 'FF'];
 
+// Define a unique, non-empty value for "None" options in Select
+// Moved from EditEmployeeDialog.tsx for broader use
+export const SELECT_NONE_VALUE = "--none--";
+
 // --- Time Mappings (Updated Format: Xh às Yh) ---
 
 // Note: ShiftType (Abertura, etc.) is mainly used for *default* hour assignment.
 // The actual hours selected in the popover might vary based on the day's options.
 
-export const shiftTypeToHoursMap: Record<ShiftType, string> = {
+export const shiftTypeToHoursMap: Record<ShiftType | 'Nenhum', string> = {
     'Abertura': '10h às 18h',
     'Intermediário': '12h às 20h',
     'Fechamento': '14h às 22h',
@@ -73,42 +78,3 @@ export const holidayTimes = {
     'Abertura': ['12h às 18h', '13h às 19h'],
     'Fechamento': ['14h às 20h', '15h às 21h'],
 };
-
-export function getTimeOptionsForDate(date: Date, isHoliday: boolean): string[] {
-  const day = date.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-
-  if (isHoliday) {
-    // Return holiday options
-    return Object.values(holidayTimes).flat();
-  } else {
-    switch (day) {
-      case 0: // Sunday
-        return Object.values(sundayTimes).flat();
-      case 5: // Friday
-      case 6: // Saturday
-        return Object.values(fridaySaturdayTimes).flat();
-      default: // Monday to Thursday
-        return Object.values(mondayThursdayTimes).flat();
-    }
-  }
-}
-
-// Define a unique, non-empty value for "None" options in Select
-// Moved from EditEmployeeDialog.tsx for broader use
-export const SELECT_NONE_VALUE = "--none--";
-
-// --- Constants ---
-
-export const roleToEmojiMap: Record<string, string> = {
-    'Caixa': '🔴',
-    'Vendas': '🔵',
-    'Estoque': '⚫',
-    'Fiscal': '🟣',
-    'Pacote': '🟢',
-    'Organização': '🟡',
-    'Outro': '⚪',
-};
-
-export const availableRoles = ['Caixa', 'Vendas', 'Estoque', 'Fiscal', 'Pacote', 'Organização', 'Outro'];
-export const daysOfWeek: DayOfWeek[] = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
-export const availableShiftTypes: ShiftType[] = ['Abertura', 'Intermediário', 'Fechamento', 'Nenhum'];
