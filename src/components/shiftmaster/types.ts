@@ -4,7 +4,7 @@ export type DayOfWeek = "Domingo" | "Segunda" | "Terça" | "Quarta" | "Quinta" |
 export interface Employee {
   id: number;
   name: string;
-  fixedDayOff?: DayOfWeek | "";
+  fixedDayOff?: DayOfWeek;
   defaultRole?: string;
   defaultShiftType?: ShiftType;
 }
@@ -71,35 +71,8 @@ export const holidayTimes = {
     'Fechamento': ['14h às 20h', '15h às 21h'],
 };
 
-// Function to get available times based on date and holiday status
-export const getTimeOptionsForDate = (date: Date, isHoliday: boolean): string[] => {
-    if (!(date instanceof Date) || isNaN(date.getTime())) {
-        console.warn("Invalid date passed to getTimeOptionsForDate. Returning default times.");
-        return [...mondayThursdayTimes.Abertura, ...mondayThursdayTimes.Intermediário, ...mondayThursdayTimes.Fechamento];
-    }
-
-    if (isHoliday) {
-        return [...holidayTimes.Abertura, ...holidayTimes.Fechamento];
-    }
-
-    const dayOfWeek = date.getDay(); // 0 = Sunday, ..., 6 = Saturday
-
-    switch (dayOfWeek) {
-        case 0: // Sunday
-            return [...sundayTimes.Abertura, ...sundayTimes.Fechamento];
-        case 5: // Friday
-        case 6: // Saturday
-            // Combine Abertura and Fechamento for Friday/Saturday
-            return [...fridaySaturdayTimes.Abertura, ...fridaySaturdayTimes.Fechamento];
-        case 1: // Monday
-        case 2: // Tuesday
-        case 3: // Wednesday
-        case 4: // Thursday
-        default:
-            // Combine all three for Monday-Thursday
-            return [...mondayThursdayTimes.Abertura, ...mondayThursdayTimes.Intermediário, ...mondayThursdayTimes.Fechamento];
-    }
-};
+// DO NOT EXPORT this constant
+export const SELECT_NONE_VALUE = "--none--";
 
 // --- Constants ---
 
