@@ -1,7 +1,7 @@
 import { addDays, format as formatDate, startOfDay, startOfMonth, endOfMonth, isEqual } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { Employee, ScheduleData, ShiftCode, FilterState, DayOfWeek, ShiftType, ScheduleEntry } from './types';
-import { availableRoles, availableShiftTypes, roleToEmojiMap as defaultRoleToEmojiMap, shiftCodeToDescription } from './types'; // Import shiftCodeToDescription
+import { daysOfWeek, roleToEmojiMap as defaultRoleToEmojiMap, shiftCodeToDescription, getTimeOptionsForDate, shiftTypeToHoursMap } from './types'; // Import daysOfWeek and other needed types/constants
 
 type InitialFilterState = FilterState;
 
@@ -44,6 +44,13 @@ export function getScheduleKey(employeeId: number, date: Date): string {
     }
   return `${employeeId}-${formatDate(date, 'yyyy-MM-dd')}`;
 }
+
+// Helper function to check if a date is a holiday (used only for initial data generation)
+const isInitialHoliday = (date: Date, initialHolidays: Date[]): boolean => {
+    const dateStart = startOfDay(date);
+    return initialHolidays.some(h => isEqual(h, dateStart));
+};
+
 
 // Function to generate initial data
 export function generateInitialData(): {
@@ -89,19 +96,13 @@ export function generateInitialData(): {
   const fixedDayMapping: { [key in DayOfWeek]?: number } = {};
   daysOfWeek.forEach((day, index) => fixedDayMapping[day] = index);
 
-   // Helper function to check if a date is an initial holiday
-   const isInitialHoliday = (date: Date): boolean => {
-       const dateStart = startOfDay(date);
-       return initialHolidays.some(h => isEqual(h, dateStart));
-   };
-
 
   initialEmployees.forEach(emp => {
     datesForMonth.forEach(date => {
       const key = getScheduleKey(emp.id, date);
       const dayOfWeek = date.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6;
       const isFixedDayOff = emp.fixedDayOff && dayOfWeek === fixedDayMapping[emp.fixedDayOff];
-      const dayIsHoliday = isInitialHoliday(date); // Check against initial holidays
+      const dayIsHoliday = isInitialHoliday(date, initialHolidays); // Check against initial holidays
 
       // Default entry structure
       let entry: ScheduleEntry = { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined }; // Default to FOLGA
@@ -190,8 +191,8 @@ export function generateWhatsAppText(
             const lowerHours = hours.toLowerCase().replace(/h/g, ''); // Remove 'h' for easier parsing
 
             if (lowerHours.startsWith('10') || lowerHours.startsWith('11') || (lowerHours.startsWith('12') && (isHoliday || date.getDay() === 0))) inferredShiftType = 'Abertura';
-            else if (lowerHours.startsWith('12') && !lowerHours.includes('às 22') && !isHoliday && date.getDay() !== 0 && date.getDay() !== 5 && date.getDay() !== 6) inferredShiftType = 'Intermediário'; // Added more specific condition for Intermediario
-            else if (lowerHours.includes('às 20') || lowerHours.includes('às 21') || lowerHours.includes('às 22')) inferredShiftType = 'Fechamento';
+            else if (lowerHours.startsWith('12') && !lowerHours.includes(' às 22') && !isHoliday && date.getDay() !== 0 && date.getDay() !== 5 && date.getDay() !== 6) inferredShiftType = 'Intermediário'; // Added more specific condition for Intermediario
+            else if (lowerHours.includes(' às 20') || lowerHours.includes(' às 21') || lowerHours.includes(' às 22')) inferredShiftType = 'Fechamento';
 
 
             if (!shifts[inferredShiftType]) shifts[inferredShiftType] = {};
