@@ -25,11 +25,12 @@ interface ShiftTableProps {
   onDeleteEmployee: (empId: number) => void; // Handler to trigger delete confirmation
 }
 
-// Define fixed available roles and base times outside component for stability
-// Combine common and Sunday times, let ShiftCell handle filtering if needed, or keep separate
-const commonTimes = ['10h–18h', '12h–20h', '14h–22h'];
-const sundayTimes = ['12h–20h', '13h–21h', '14h–20h', '15h–21h'];
-const weekendExtendedTimes = [...commonTimes, '10h-20h', '12h-22h', '14h-00h'];
+// Define time options based on day type
+const mondayThursdayTimes = ['10h–18h', '12h–20h', '14h–22h'];
+const fridaySaturdayTimes = ['10h–18h', '10h–19h', '10h–20h', '11h–21h', '12h–22h', '13h–22h'];
+const sundayTimes = ['12h–20h', '13h–21h'];
+const holidayTimes = ['12h–18h', '13h–19h', '14h–20h', '15h–21h'];
+
 
 export function ShiftTable({
   employees,
@@ -44,14 +45,22 @@ export function ShiftTable({
   const dates = useMemo(() => getDatesInRange(startDate, endDate), [startDate, endDate]);
 
    const getTimeOptions = (date: Date): string[] => {
-       const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
-       const isFriday = dayOfWeek === 5;
-       const isSaturday = dayOfWeek === 6;
+       const dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
-       if (dayOfWeek === 0) return sundayTimes; // Sunday
-       if (isFriday || isSaturday) return weekendExtendedTimes; // Friday or Saturday
-       return commonTimes; // Monday to Thursday
-       // TODO: Handle Feriados - requires a holiday list/API
+       // TODO: Handle Feriados - requires a holiday list/API integration.
+       // For now, we'll just use the weekday logic. If a date is identified as a holiday, return holidayTimes.
+       // Example pseudo-code:
+       // if (isHoliday(date)) {
+       //   return holidayTimes;
+       // }
+
+       if (dayOfWeek === 0) { // Sunday
+            return sundayTimes;
+       } else if (dayOfWeek === 5 || dayOfWeek === 6) { // Friday or Saturday
+           return fridaySaturdayTimes;
+       } else { // Monday to Thursday (1 to 4)
+            return mondayThursdayTimes;
+       }
    };
 
    // Check for rule violations for visual feedback
@@ -201,11 +210,10 @@ export function ShiftTable({
                          if (!roleForCell && emp.defaultRole) {
                              roleForCell = emp.defaultRole;
                          }
+                         // If scheduled hours are empty for T/H, try mapping default shift type
                          if (!hoursForCell && emp.defaultShiftType && emp.defaultShiftType !== 'Nenhum') {
-                            hoursForCell = shiftTypeToHoursMap[emp.defaultShiftType];
-                            // Optionally auto-update schedule state here if needed, but might be better in ShiftCell interaction
-                            // onDetailChange(emp.id, date, 'role', roleForCell);
-                            // onDetailChange(emp.id, date, 'baseHours', hoursForCell);
+                             // Use shiftTypeToHoursMap for initial default, but allow specific day options to override later
+                             hoursForCell = shiftTypeToHoursMap[emp.defaultShiftType];
                          }
                      }
 
@@ -233,7 +241,7 @@ export function ShiftTable({
                           baseHours={hoursForCell} // Pass determined/default hours
                           date={date}
                           availableRoles={defaultAvailableRoles} // Pass available roles
-                          availableTimes={getTimeOptions(date)} // Pass dynamic time options
+                          availableTimes={getTimeOptions(date)} // Pass dynamic time options based on date
                           onChange={(newShift) => onShiftChange(emp.id, date, newShift)}
                           onDetailChange={(field, value) => onDetailChange(emp.id, date, field, value)}
                           hasViolation={hasViolation}
