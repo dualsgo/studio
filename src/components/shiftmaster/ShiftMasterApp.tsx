@@ -5,13 +5,13 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ShiftFilters } from './ShiftFilters';
 import { ShiftTable } from './ShiftTable';
 import type { Employee, ScheduleData, FilterState, ShiftCode, DayOfWeek, ShiftType } from './types';
-import { generateInitialData, getScheduleKey, generateWhatsAppText, getDatesInRange } from './utils'; // Added getDatesInRange import
+import { generateInitialData, getScheduleKey, generateWhatsAppText, getDatesInRange } from './utils';
 import { useToast } from "@/hooks/use-toast";
-import { isAfter, isBefore, parseISO, differenceInDays, addDays, format } from 'date-fns';
-import { ptBR } from 'date-fns/locale'; // Import ptBR locale
+import { isBefore, parseISO, differenceInDays, addDays, format, startOfMonth, endOfMonth } from 'date-fns'; // Added month functions
+import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
-import { UserPlus, FileText, MessageSquareText } from 'lucide-react';
-import { EditEmployeeDialog } from './EditEmployeeDialog'; // Import the new dialog
+import { UserPlus, FileText, MessageSquareText, Eraser, RotateCcw } from 'lucide-react'; // Added Eraser and RotateCcw icons
+import { EditEmployeeDialog } from './EditEmployeeDialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,7 +24,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import jsPDF from 'jspdf';
-import 'jspdf-autotable'; // Import autoTable plugin
+import 'jspdf-autotable';
 
 // Extend jsPDF interface for autoTable
 declare module 'jspdf' {
@@ -35,35 +35,32 @@ declare module 'jspdf' {
 
 const STORAGE_KEY = 'shiftMasterSchedule';
 
-// Define types without the 'store' property for filters
-type AppFilterState = Omit<FilterState, 'store'>;
+// Use the updated FilterState directly
+type AppFilterState = FilterState;
 type AppPartialFilterState = Partial<AppFilterState>;
 
 
 export function ShiftMasterApp() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [schedule, setSchedule] = useState<ScheduleData>({});
+  const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date())); // State to track the displayed month
   const [filters, setFilters] = useState<AppFilterState>({
     employee: '',
     role: '',
-    startDate: new Date(),
-    endDate: addDays(new Date(), 6), // Default to 1 week view
+    selectedDate: new Date(), // Default selected date is today
   });
   const [isClient, setIsClient] = useState(false);
   const { toast } = useToast();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [deletingEmployeeId, setDeletingEmployeeId] = useState<number | null>(null);
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false); // State for reset confirmation
 
-  // Ref for the table container, might be needed for PDF generation context
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
-
   // --- Data Initialization and Persistence ---
-
-  // Load data from localStorage on mount
   useEffect(() => {
-    setIsClient(true); // Indicate component has mounted on the client
+    setIsClient(true);
     const storedData = localStorage.getItem(STORAGE_KEY);
     let loadedSuccessfully = false;
     if (storedData) {
@@ -71,14 +68,15 @@ export function ShiftMasterApp() {
         const parsedData = JSON.parse(storedData);
         if (parsedData.employees && parsedData.schedule) {
           setEmployees(parsedData.employees);
-          // Convert date strings back to Date objects for filters
-           const { store, ...loadedFilters } = parsedData.filters || {}; // Handle missing filters gracefully
-            setFilters({
-                employee: loadedFilters.employee || '',
-                role: loadedFilters.role || '',
-                startDate: loadedFilters.startDate ? parseISO(loadedFilters.startDate) : new Date(),
-                endDate: loadedFilters.endDate ? parseISO(loadedFilters.endDate) : addDays(new Date(), 6),
-            });
+          const loadedFilters = parsedData.filters || {};
+          setFilters({
+            employee: loadedFilters.employee || '',
+            role: loadedFilters.role || '',
+            // Ensure selectedDate is a Date object
+            selectedDate: loadedFilters.selectedDate ? parseISO(loadedFilters.selectedDate) : new Date(),
+          });
+           // Set the current month based on the loaded selectedDate
+           setCurrentMonth(startOfMonth(loadedFilters.selectedDate ? parseISO(loadedFilters.selectedDate) : new Date()));
           setSchedule(parsedData.schedule);
           loadedSuccessfully = true;
         }
@@ -91,31 +89,32 @@ export function ShiftMasterApp() {
     if (!loadedSuccessfully) {
       initializeDefaultData();
     }
-  }, [toast]); // Add toast dependency
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast]);
 
   const initializeDefaultData = useCallback(() => {
     const { initialEmployees, initialSchedule, initialFilters } = generateInitialData();
     setEmployees(initialEmployees);
     setSchedule(initialSchedule);
     setFilters(initialFilters);
+    setCurrentMonth(startOfMonth(initialFilters.selectedDate)); // Set month based on initial filters
     // No need to save here, the effect below will handle it
   }, []);
 
   // Save data to localStorage whenever it changes
   useEffect(() => {
-    if (isClient && employees.length > 0) { // Only save if client-side and data is initialized
+    if (isClient && employees.length > 0) {
       saveToLocalStorage(employees, schedule, filters);
     }
-  }, [employees, schedule, filters, isClient]);
+  }, [employees, schedule, filters, isClient]); // Added isClient dependency
 
-  const saveToLocalStorage = (emps: Employee[], sched: ScheduleData, filt: AppFilterState) => {
+   const saveToLocalStorage = (emps: Employee[], sched: ScheduleData, filt: AppFilterState) => {
     if (!isClient) return;
     try {
-      // Ensure dates in filters are stringified correctly
+      // Ensure selectedDate is stringified correctly
       const filtersToStore = {
         ...filt,
-        startDate: filt.startDate?.toISOString(),
-        endDate: filt.endDate?.toISOString(),
+        selectedDate: filt.selectedDate?.toISOString(),
       };
       const dataToStore = JSON.stringify({ employees: emps, schedule: sched, filters: filtersToStore });
       localStorage.setItem(STORAGE_KEY, dataToStore);
@@ -125,34 +124,23 @@ export function ShiftMasterApp() {
     }
   };
 
+
   // --- Filter Handlers ---
 
   const handleFilterChange = useCallback((newFilters: AppPartialFilterState) => {
-    setFilters(prev => {
-      const updatedFilters = { ...prev, ...newFilters };
-      // Ensure endDate is not before startDate
-      if (updatedFilters.endDate && updatedFilters.startDate && isBefore(updatedFilters.endDate, updatedFilters.startDate)) {
-        updatedFilters.endDate = updatedFilters.startDate;
-        toast({ title: "Aviso", description: "A data final não pode ser anterior à data inicial.", variant: "default" });
-      }
-      return updatedFilters;
-    });
-  }, [toast]);
-
-  const handleClearFilters = useCallback(() => {
-    const today = new Date();
-    setFilters({
-      employee: '',
-      role: '',
-      startDate: today,
-      endDate: addDays(today, 6),
-    });
+    setFilters(prev => ({ ...prev, ...newFilters }));
+    // If the selectedDate changes, update the displayed month
+    if (newFilters.selectedDate) {
+      setCurrentMonth(startOfMonth(newFilters.selectedDate));
+    }
   }, []);
+
+  // No separate clear filters button needed for the current setup
 
   // --- Employee Management Handlers ---
 
   const handleAddEmployee = useCallback(() => {
-    setEditingEmployee(null); // Ensure we are adding, not editing
+    setEditingEmployee(null);
     setIsEditDialogOpen(true);
   }, []);
 
@@ -163,14 +151,11 @@ export function ShiftMasterApp() {
 
   const handleDeleteEmployee = useCallback((empId: number) => {
     setDeletingEmployeeId(empId);
-    // The AlertDialog trigger will open the confirmation dialog
   }, []);
 
   const confirmDeleteEmployee = useCallback(() => {
     if (deletingEmployeeId === null) return;
-
     setEmployees(prev => prev.filter(emp => emp.id !== deletingEmployeeId));
-    // Also remove schedule entries for the deleted employee
     setSchedule(prev => {
         const newSchedule = { ...prev };
         Object.keys(newSchedule).forEach(key => {
@@ -180,21 +165,18 @@ export function ShiftMasterApp() {
         });
         return newSchedule;
     });
-
     toast({ title: "Sucesso", description: "Colaborador removido." });
-    setDeletingEmployeeId(null); // Close dialog implicitly by resetting state
+    setDeletingEmployeeId(null);
   }, [deletingEmployeeId, toast]);
 
   const handleSaveEmployee = useCallback((employeeData: Employee) => {
       setEmployees(prev => {
           const existingIndex = prev.findIndex(e => e.id === employeeData.id);
           if (existingIndex > -1) {
-              // Update existing employee
               const updatedEmployees = [...prev];
               updatedEmployees[existingIndex] = employeeData;
               return updatedEmployees;
           } else {
-              // Add new employee (assign a new ID)
               const newId = prev.length > 0 ? Math.max(...prev.map(e => e.id)) + 1 : 1;
               return [...prev, { ...employeeData, id: newId }];
           }
@@ -207,9 +189,9 @@ export function ShiftMasterApp() {
 
   // --- Schedule Management Handlers ---
 
-  const checkFixedDayOff = (employee: Employee, date: Date): boolean => {
-    if (!employee.fixedDayOff) return false; // No fixed day off set
-    const dayOfWeek = date.getDay(); // 0 = Sunday, ..., 6 = Saturday
+   const checkFixedDayOff = (employee: Employee, date: Date): boolean => {
+    if (!employee.fixedDayOff) return false;
+    const dayOfWeek = date.getDay();
     const fixedDayMapping: { [key in DayOfWeek]?: number } = {
         "Domingo": 0, "Segunda": 1, "Terça": 2, "Quarta": 3, "Quinta": 4, "Sexta": 5, "Sábado": 6
     };
@@ -217,53 +199,40 @@ export function ShiftMasterApp() {
     return fixedDayNum !== undefined && dayOfWeek === fixedDayNum;
   };
 
+
   const handleShiftChange = useCallback((empId: number, date: Date, newShift: ShiftCode) => {
     const employee = employees.find(e => e.id === empId);
     if (!employee) return;
 
     // --- Validation Rules ---
     if (newShift === 'T') {
-        // 1. Check Fixed Day Off
         if (checkFixedDayOff(employee, date)) {
             toast({
                 title: "Regra Violada",
                 description: `${employee.name} tem folga fixa neste dia (${employee.fixedDayOff}).`,
                 variant: "destructive",
             });
-            return; // Prevent update
+            return;
         }
 
-         // Create a temporary schedule state for validation checks
         const tempSchedule = { ...schedule };
         const key = getScheduleKey(empId, date);
-         // Use existing details if available, otherwise pull from employee defaults
         const existingEntry = schedule[key];
         const role = existingEntry?.role || employee.defaultRole || '';
-        // Get default hours based on defaultShiftType if available
         const defaultHours = employee.defaultShiftType && employee.defaultShiftType !== 'Nenhum'
                            ? require('./types').shiftTypeToHoursMap[employee.defaultShiftType]
                            : '';
         const baseHours = existingEntry?.baseHours || defaultHours;
 
+         tempSchedule[key] = { shift: newShift, role: role, baseHours: baseHours };
 
-         tempSchedule[key] = {
-             shift: newShift,
-             role: role,
-             baseHours: baseHours,
-         };
-
-        // 2. Check Consecutive Work Days (using temp schedule)
         let consecutiveDays = 0;
-        for (let i = 0; i < 7; i++) { // Check up to 6 days back + current day
+        for (let i = 0; i < 7; i++) {
             const checkDate = addDays(date, -i);
             const checkKey = getScheduleKey(empId, checkDate);
-             // Check the temporary schedule for the current date, original schedule for past dates
             const dayShift = (i === 0) ? tempSchedule[checkKey]?.shift : schedule[checkKey]?.shift;
-             if (dayShift === 'T') {
-                consecutiveDays++;
-             } else if (i > 0) { // Stop if a non-work day breaks the streak *before* the current day
-                 break;
-             }
+             if (dayShift === 'T') consecutiveDays++;
+             else if (i > 0) break;
         }
          if (consecutiveDays > 6) {
             toast({
@@ -271,31 +240,24 @@ export function ShiftMasterApp() {
                 description: `${employee.name} não pode trabalhar mais de 6 dias consecutivos.`,
                 variant: "destructive",
             });
-            return; // Prevent update
+            return;
         }
 
-
-        // 3. Check Consecutive Sundays (using original schedule for past Sundays)
-         if (date.getDay() === 0) { // Only check if the changed day is a Sunday
+         if (date.getDay() === 0) {
              let previousConsecutiveSundays = 0;
-             for (let k = 1; k <= 3; k++) { // Check up to 3 Sundays *before* the current one
+             for (let k = 1; k <= 3; k++) {
                  const prevSunday = addDays(date, -k * 7);
                  const prevKey = getScheduleKey(empId, prevSunday);
-                 // Use the original schedule for previous days
-                 if (schedule[prevKey]?.shift === 'T') {
-                     previousConsecutiveSundays++;
-                 } else {
-                     break; // Streak broken
-                 }
+                 if (schedule[prevKey]?.shift === 'T') previousConsecutiveSundays++;
+                 else break;
              }
-             // If already worked 3 consecutive Sundays before this one, cannot work this one.
              if (previousConsecutiveSundays >= 3) {
                  toast({
                      title: "Regra Violada",
                      description: `${employee.name} não pode trabalhar mais de 3 domingos consecutivos.`,
                      variant: "destructive",
                  });
-                 return; // Prevent update
+                 return;
              }
          }
     }
@@ -304,21 +266,17 @@ export function ShiftMasterApp() {
     setSchedule(prev => {
       const key = getScheduleKey(empId, date);
       const existingEntry = prev[key];
-
-       // Use existing role/hours if they exist, otherwise try employee defaults
-       const role = existingEntry?.role || employee.defaultRole || '';
+      const role = existingEntry?.role || employee.defaultRole || '';
        const defaultHours = employee.defaultShiftType && employee.defaultShiftType !== 'Nenhum'
                             ? require('./types').shiftTypeToHoursMap[employee.defaultShiftType]
                             : '';
        const baseHours = existingEntry?.baseHours || defaultHours;
 
-
       return {
         ...prev,
         [key]: {
-          ...existingEntry, // Keep any other potential future fields
+          ...existingEntry,
           shift: newShift,
-          // Set role/hours if changing TO T or H, clear if changing AWAY
           role: (newShift === 'T' || newShift === 'H') ? role : '',
           baseHours: (newShift === 'T' || newShift === 'H') ? baseHours : '',
         },
@@ -327,99 +285,107 @@ export function ShiftMasterApp() {
   }, [employees, schedule, toast]);
 
 
-  // Updated handleDetailChange: Only modifies schedule for a specific date.
   const handleDetailChange = useCallback((empId: number, date: Date, field: 'role' | 'baseHours', value: string) => {
       setSchedule(prev => {
           const key = getScheduleKey(empId, date);
-           // Get current entry or initialize with 'D' if it doesn't exist
            const currentEntry = prev[key] || { shift: 'D', role: '', baseHours: '' };
-
-           // Only allow setting role/hours if the shift is 'T' or 'H'
            if (currentEntry.shift !== 'T' && currentEntry.shift !== 'H') {
                toast({
                    title: "Ação Inválida",
-                   description: "Só é possível definir Função/Horário para dias de Trabalho (T) ou Horário Especial (H). Primeiro altere o estado da célula.",
+                   description: "Só é possível definir Função/Horário para dias de Trabalho (T) ou Horário Especial (H).",
                    variant: "default"
                });
-               return prev; // Return previous state without changes
+               return prev;
            }
-
-          return {
-              ...prev,
-              [key]: {
-                  ...currentEntry,
-                  [field]: value, // Update the specific field (role or baseHours)
-              },
-          };
+          return { ...prev, [key]: { ...currentEntry, [field]: value } };
       });
   }, [toast]);
 
 
   // --- Data Filtering for Display ---
  const filteredEmployees = React.useMemo(() => {
-   if (!isClient) return []; // Don't filter until client-side hydration
+   if (!isClient) return [];
 
-   const { employee: employeeFilter, role: roleFilter, startDate, endDate } = filters;
+   const { employee: employeeFilter, role: roleFilter } = filters;
+   const monthStart = startOfMonth(currentMonth);
+   const monthEnd = endOfMonth(currentMonth);
 
    return employees.filter(emp => {
-     // Employee ID filter
      if (employeeFilter && emp.id !== parseInt(employeeFilter)) return false;
 
-     // Role filter: Check if the employee *ever* works the selected role in the date range
-     if (roleFilter && startDate && endDate) {
+     if (roleFilter) {
        let hasMatchingRole = false;
-       let currentDate = new Date(startDate);
-       while (currentDate <= endDate) {
+       let currentDate = new Date(monthStart);
+       while (currentDate <= monthEnd) {
          const key = getScheduleKey(emp.id, currentDate);
          const daySchedule = schedule[key];
          if (daySchedule && (daySchedule.shift === 'T' || daySchedule.shift === 'H') && daySchedule.role === roleFilter) {
            hasMatchingRole = true;
-           break; // Found a match, no need to check further dates
+           break;
          }
          currentDate = addDays(currentDate, 1);
-         if (differenceInDays(currentDate, startDate) > 366) break; // Safety break
+         if (differenceInDays(currentDate, monthStart) > 40) break; // Safety break
        }
-       if (!hasMatchingRole) return false; // If role filter is active and no match found, exclude employee
+       if (!hasMatchingRole) return false;
      }
-
-     // If employee filter passed and role filter passed (or wasn't active), include employee
      return true;
    });
- }, [employees, schedule, filters, isClient]);
+ }, [employees, schedule, filters, currentMonth, isClient]);
 
- // --- PDF & WhatsApp Generation ---
+  // --- Reset Scale Handler ---
+  const handleResetScale = useCallback(() => {
+    setIsResetConfirmOpen(true);
+  }, []);
+
+  const confirmResetScale = useCallback(() => {
+      const monthStart = startOfMonth(currentMonth);
+      const monthEnd = endOfMonth(currentMonth);
+      const datesForMonth = getDatesInRange(monthStart, monthEnd);
+      const newSchedule = { ...schedule }; // Start with existing schedule
+
+      employees.forEach(emp => {
+          datesForMonth.forEach(date => {
+              const key = getScheduleKey(emp.id, date);
+              newSchedule[key] = { shift: 'F', role: '', baseHours: '' }; // Set to Folga
+          });
+      });
+
+      setSchedule(newSchedule);
+      setIsResetConfirmOpen(false);
+      toast({ title: "Sucesso", description: `Escala do mês de ${format(currentMonth, 'MMMM yyyy', { locale: ptBR })} zerada para 'Folga'.` });
+  }, [currentMonth, employees, schedule, toast]);
+
+
+  // --- PDF & WhatsApp Generation ---
 
  const generatePdf = useCallback(() => {
-     if (!isClient) return; // Ensure running on client
+     if (!isClient) return;
 
      const doc = new jsPDF({ orientation: 'landscape' });
-     const tableStartDate = filters.startDate || new Date();
-     const tableEndDate = filters.endDate || addDays(new Date(), 6);
+     const tableStartDate = startOfMonth(currentMonth);
+     const tableEndDate = endOfMonth(currentMonth);
      const datesInRange = getDatesInRange(tableStartDate, tableEndDate);
 
      doc.setFontSize(18);
      doc.text('ShiftMaster - Escala de Trabalho', 14, 20);
      doc.setFontSize(11);
      doc.setTextColor(100);
-     const dateRangeText = `Período: ${format(tableStartDate, 'dd/MM/yyyy')} - ${format(tableEndDate, 'dd/MM/yyyy')}`;
+     const dateRangeText = `Mês: ${format(tableStartDate, 'MMMM yyyy', { locale: ptBR })}`;
      doc.text(dateRangeText, 14, 28);
 
-     const head = [['Colaborador', ...datesInRange.map(d => format(d, 'EEE dd/MM', { locale: ptBR }))]];
+     const head = [['Colaborador', ...datesInRange.map(d => format(d, 'EEE dd', { locale: ptBR }))]]; // Shorter date format
 
      const body = filteredEmployees.map(emp => {
          const row = [emp.name];
          datesInRange.forEach(date => {
              const key = getScheduleKey(emp.id, date);
              const entry = schedule[key];
-             let cellText = '-'; // Default for D or F
+             let cellText = '-';
              if (entry) {
-                 if (entry.shift === 'T') {
-                     cellText = `${entry.role}\n${entry.baseHours}`;
-                 } else if (entry.shift === 'H') {
-                     cellText = `${entry.role}\n${entry.baseHours}\n(H)`; // Indicate special
-                 } else if (entry.shift === 'F') {
-                     cellText = 'Folga';
-                 }
+                 if (entry.shift === 'T') cellText = `${entry.role}\n${entry.baseHours}`;
+                 else if (entry.shift === 'H') cellText = `${entry.role}\n${entry.baseHours}\n(H)`;
+                 else if (entry.shift === 'F') cellText = 'F'; // Shorten Folga
+                 else if (entry.shift === 'D') cellText = 'D'; // Show D for Disponible
              }
              row.push(cellText);
          });
@@ -431,54 +397,58 @@ export function ShiftMasterApp() {
          head: head,
          body: body,
          theme: 'grid',
-         headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold', halign: 'center' },
-         styles: { cellPadding: 1.5, fontSize: 8, valign: 'middle', halign: 'center' },
+         headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold', halign: 'center', fontSize: 7 },
+         styles: { cellPadding: 1, fontSize: 6, valign: 'middle', halign: 'center', minCellHeight: 10 }, // Adjusted padding and font size
          columnStyles: {
-             0: { halign: 'left', fontStyle: 'bold', minCellWidth: 35 }, // Employee name column
+             0: { halign: 'left', fontStyle: 'bold', minCellWidth: 25, cellWidth: 'wrap' }, // Employee name column narrower
+             // Dynamically set width for date columns if needed, e.g., based on number of days
          },
-         didParseCell: function (data) {
-            // Add basic coloring based on content (optional)
-            if (data.cell.section === 'body') {
+          didParseCell: function (data) {
+             if (data.cell.section === 'body') {
                  const cellText = data.cell.raw?.toString() || '';
-                 if (cellText === 'Folga') {
-                     data.cell.styles.fillColor = [220, 220, 220]; // Light gray for Folga
+                 if (cellText === 'F') {
+                     data.cell.styles.fillColor = [220, 220, 220]; // Gray for Folga
                      data.cell.styles.textColor = [100, 100, 100];
                  } else if (cellText.includes('(H)')) {
-                     data.cell.styles.fillColor = [52, 152, 219]; // Blue for Special (H)
-                     data.cell.styles.textColor = 255;
-                 } else if (cellText !== '-' && !cellText.includes('Folga')) { // Assume Work (T)
-                     data.cell.styles.fillColor = [231, 76, 60]; // Red for Work (T)
+                      data.cell.styles.fillColor = [52, 152, 219]; // Blue for Special
+                      data.cell.styles.textColor = 255;
+                 } else if (cellText === 'D') {
+                      data.cell.styles.fillColor = [240, 240, 240]; // Lighter gray for Disponible
+                      data.cell.styles.textColor = [150, 150, 150];
+                 } else if (cellText !== '-') { // Assume Work (T)
+                     data.cell.styles.fillColor = [231, 76, 60]; // Red for Work
                      data.cell.styles.textColor = 255;
                  }
-            }
-         }
+                 // Make cell text bold for Work/Special
+                  if (cellText.includes('(H)') || (cellText !== '-' && cellText !== 'F' && cellText !== 'D')) {
+                      data.cell.styles.fontStyle = 'bold';
+                  }
+             }
+          }
      });
 
-     doc.save(`escala_${format(tableStartDate, 'yyyyMMdd')}_${format(tableEndDate, 'yyyyMMdd')}.pdf`);
+     doc.save(`escala_${format(tableStartDate, 'yyyyMM')}.pdf`);
      toast({ title: "Sucesso", description: "PDF da escala gerado." });
 
- }, [isClient, filters.startDate, filters.endDate, filteredEmployees, schedule, toast]); // Removed ptBR from here, it's imported
+ }, [isClient, currentMonth, filteredEmployees, schedule, toast]); // Depend on currentMonth
 
 
   const generateDailyWhatsAppText = useCallback(() => {
-      if (!isClient) return;
+      if (!isClient || !filters.selectedDate) {
+           toast({ title: "Erro", description: "Selecione uma data para gerar o texto do WhatsApp.", variant: "destructive" });
+          return;
+      }
 
-      const today = new Date(); // Generate for today's date
-      const text = generateWhatsAppText(today, employees, schedule);
+      const text = generateWhatsAppText(filters.selectedDate, employees, schedule); // Use selectedDate from filters
 
-      // Attempt to copy to clipboard
       navigator.clipboard.writeText(text).then(() => {
-          toast({ title: "Sucesso", description: "Texto da escala de hoje copiado para a área de transferência." });
+          toast({ title: "Sucesso", description: `Texto da escala de ${format(filters.selectedDate, 'dd/MM/yyyy')} copiado.` });
       }).catch(err => {
           console.error('Failed to copy WhatsApp text: ', err);
-          toast({ title: "Erro", description: "Falha ao copiar texto. Verifique as permissões do navegador.", variant: "destructive" });
-          // Fallback: Maybe display the text in a modal?
+          toast({ title: "Erro", description: "Falha ao copiar texto.", variant: "destructive" });
       });
 
-      // Note: Directly opening WhatsApp with pre-filled text requires specific URL schemes and user interaction.
-      // Copying to clipboard is a more reliable cross-platform approach.
-
-  }, [isClient, employees, schedule, toast]);
+  }, [isClient, filters.selectedDate, employees, schedule, toast]); // Depend on selectedDate
 
 
   // --- Render Logic ---
@@ -487,42 +457,60 @@ export function ShiftMasterApp() {
     return <div className="flex justify-center items-center h-screen"><p>Carregando gerenciador de escalas...</p></div>;
   }
 
+  // Calculate dates for the current month
+  const monthStart = startOfMonth(currentMonth);
+  const monthEnd = endOfMonth(currentMonth);
+  const datesForTable = getDatesInRange(monthStart, monthEnd);
+
 
   return (
     <div className="p-4 md:p-6 lg:p-8 flex flex-col h-screen">
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
          <h1 className="text-2xl font-bold text-primary">ShiftMaster – Gerenciador de Escalas</h1>
-         <div className="flex items-center space-x-2">
+         <div className="flex items-center space-x-2 flex-wrap gap-2">
             <Button onClick={generatePdf}>
-                 <FileText className="mr-2 h-4 w-4" /> Gerar PDF
+                 <FileText className="mr-2 h-4 w-4" /> Gerar PDF (Mês Atual)
             </Button>
+             {/* Updated Button Text */}
             <Button onClick={generateDailyWhatsAppText}>
-                <MessageSquareText className="mr-2 h-4 w-4" /> Texto WhatsApp (Hoje)
+                <MessageSquareText className="mr-2 h-4 w-4" /> Texto WhatsApp (Dia Sel.)
             </Button>
              <Button onClick={handleAddEmployee}>
                  <UserPlus className="mr-2 h-4 w-4" /> Adicionar Colaborador
+             </Button>
+              {/* Reset Scale Button */}
+             <Button variant="outline" onClick={handleResetScale}>
+                <RotateCcw className="mr-2 h-4 w-4" /> Zerar Escala (Mês)
              </Button>
          </div>
       </div>
 
        <ShiftFilters
          filters={filters}
-         employees={employees} // Pass all employees to filters for selection
-         roles={require('./types').availableRoles} // Use availableRoles from types
+         employees={employees}
+         roles={require('./types').availableRoles}
          onFilterChange={handleFilterChange}
-         onClearFilters={handleClearFilters}
+         // onClearFilters removed
       />
+
+      {/* TODO: Add Month Navigation Buttons here */}
+       <div className="flex justify-center items-center my-4 space-x-4">
+          <Button variant="outline" onClick={() => setCurrentMonth(prev => addDays(startOfMonth(prev), -1))}>Mês Anterior</Button>
+          <span className="text-lg font-semibold">{format(currentMonth, 'MMMM yyyy', { locale: ptBR })}</span>
+          <Button variant="outline" onClick={() => setCurrentMonth(prev => addDays(endOfMonth(prev), 1))}>Próximo Mês</Button>
+       </div>
+
 
       <div ref={tableContainerRef} className="flex-grow overflow-auto mt-4 border rounded-lg shadow-md">
            <ShiftTable
-             employees={filteredEmployees} // Pass filtered employees to table
+             employees={filteredEmployees}
              schedule={schedule}
-             startDate={filters.startDate}
-             endDate={filters.endDate}
+             // Pass the calculated dates for the current month
+             dates={datesForTable}
              onShiftChange={handleShiftChange}
              onDetailChange={handleDetailChange}
              onEditEmployee={handleEditEmployee}
-             onDeleteEmployee={handleDeleteEmployee} // Pass delete handler
+             onDeleteEmployee={handleDeleteEmployee}
           />
       </div>
 
@@ -536,14 +524,11 @@ export function ShiftMasterApp() {
 
        {/* Delete Confirmation Dialog */}
         <AlertDialog open={deletingEmployeeId !== null} onOpenChange={(open) => !open && setDeletingEmployeeId(null)}>
-            {/* Trigger is handled programmatically by setting deletingEmployeeId */}
-            {/* <AlertDialogTrigger asChild><button className="hidden"></button></AlertDialogTrigger> */}
             <AlertDialogContent>
                 <AlertDialogHeader>
                 <AlertDialogTitle>Confirmar Remoção</AlertDialogTitle>
                 <AlertDialogDescription>
-                    Tem certeza que deseja remover o colaborador "{employees.find(e => e.id === deletingEmployeeId)?.name || ''}"?
-                    Todas as suas informações de escala também serão removidas. Esta ação não pode ser desfeita.
+                    Tem certeza que deseja remover "{employees.find(e => e.id === deletingEmployeeId)?.name || ''}"? Esta ação não pode ser desfeita.
                 </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -555,8 +540,25 @@ export function ShiftMasterApp() {
             </AlertDialogContent>
         </AlertDialog>
 
+        {/* Reset Scale Confirmation Dialog */}
+        <AlertDialog open={isResetConfirmOpen} onOpenChange={setIsResetConfirmOpen}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                <AlertDialogTitle>Confirmar Zerar Escala</AlertDialogTitle>
+                <AlertDialogDescription>
+                    Tem certeza que deseja zerar a escala para o mês de {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}?
+                    Todos os dias serão definidos como 'Folga' (F). Esta ação não pode ser desfeita.
+                </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={confirmResetScale} variant="destructive">
+                    Zerar Escala
+                </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+
     </div>
   );
 }
-
-    

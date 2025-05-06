@@ -1,11 +1,11 @@
 
-import { addDays, format, startOfDay } from 'date-fns';
-import { ptBR } from 'date-fns/locale'; // Import ptBR locale correctly
+import { addDays, format, startOfDay, startOfMonth, endOfMonth } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import type { Employee, ScheduleData, ShiftCode, FilterState, DayOfWeek, ShiftType } from './types';
 import { shiftTypeToHoursMap, daysOfWeek, availableRoles, availableShiftTypes } from './types'; // Import maps and constants
 
-// Define type without 'store' for initial filters
-type InitialFilterState = Omit<FilterState, 'store'>;
+// Define type without 'store' for initial filters (already correct, just ensuring consistency)
+type InitialFilterState = FilterState; // Use the updated FilterState directly
 
 // Function to generate a range of dates
 export function getDatesInRange(startDate: Date, endDate: Date): Date[] {
@@ -15,12 +15,14 @@ export function getDatesInRange(startDate: Date, endDate: Date): Date[] {
 
   if (isNaN(currentDate.getTime()) || isNaN(finalDate.getTime())) {
       console.error("Invalid start or end date provided to getDatesInRange");
-      // Return a default range, e.g., today for 7 days
-      currentDate = startOfDay(new Date());
-      const defaultEndDate = addDays(currentDate, 6);
-      while (currentDate <= defaultEndDate) {
+      // Default to current month if dates are invalid
+      const today = new Date();
+      currentDate = startOfMonth(today);
+      const defaultEndDate = endOfMonth(today);
+       while (currentDate <= defaultEndDate) {
           dates.push(new Date(currentDate));
           currentDate = addDays(currentDate, 1);
+          if (dates.length > 40) break; // Safety break for month view
       }
       return dates;
   }
@@ -28,9 +30,9 @@ export function getDatesInRange(startDate: Date, endDate: Date): Date[] {
 
   while (currentDate <= finalDate) {
     dates.push(new Date(currentDate)); // Create a new Date object instance
-     // Ensure we don't get stuck in an infinite loop if dates are weird
-    if (dates.length > 366) { // Limit to roughly a year's worth of days
-        console.warn("getDatesInRange exceeded 366 days, breaking loop.");
+     // Ensure we don't get stuck in an infinite loop
+    if (dates.length > 40) { // Limit to slightly more than a month
+        console.warn("getDatesInRange exceeded 40 days, breaking loop.");
         break;
     }
     currentDate = addDays(currentDate, 1);
@@ -54,7 +56,7 @@ export function getScheduleKey(employeeId: number, date: Date): string {
 export function generateInitialData(): {
   initialEmployees: Employee[];
   initialSchedule: ScheduleData;
-  initialFilters: InitialFilterState; // Use the type without 'store'
+  initialFilters: InitialFilterState; // Use the updated FilterState
 } {
   const initialEmployees: Employee[] = [
     // Base Role and Base Hours properties removed, added defaults
@@ -73,14 +75,18 @@ export function generateInitialData(): {
   const initialFilters: InitialFilterState = {
       employee: '',
       role: '',
-      startDate: today,
-      endDate: addDays(today, 6),
+      selectedDate: today, // Initialize selectedDate to today
+      // startDate and endDate removed
   };
 
-  // Populate some initial schedule data for the next week
+  // Populate some initial schedule data for the current month
+  const monthStart = startOfMonth(today);
+  const monthEnd = endOfMonth(today);
+  const datesForMonth = getDatesInRange(monthStart, monthEnd);
+
+
   initialEmployees.forEach(emp => {
-    for (let i = 0; i < 7; i++) {
-      const date = addDays(today, i);
+    datesForMonth.forEach(date => {
       const key = getScheduleKey(emp.id, date);
 
       const dayOfWeek = date.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -94,17 +100,16 @@ export function generateInitialData(): {
 
        if (fixedDayNum !== undefined && dayOfWeek === fixedDayNum) {
            shift = 'F'; // Assign Folga on fixed day off
-       } else if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Example: Work weekdays
-            // Pre-fill with 'T' and default info only if defaults exist
+       } else {
+           // Pre-fill with 'T' and default info only if defaults exist
             if (emp.defaultRole && emp.defaultShiftType && emp.defaultShiftType !== 'Nenhum') {
                  shift = 'T';
                  role = emp.defaultRole;
+                 // Use the base mapping for initial data, ShiftCell handles specific options
                  baseHours = shiftTypeToHoursMap[emp.defaultShiftType];
              } else {
                  shift = 'D'; // Otherwise, leave as Disponible
              }
-       } else {
-            shift = 'F'; // Example: Off weekends by default if not fixed day off
        }
 
 
@@ -114,7 +119,7 @@ export function generateInitialData(): {
          role: role,
          baseHours: baseHours,
        };
-    }
+    });
   });
 
 
@@ -124,11 +129,14 @@ export function generateInitialData(): {
 
 // Helper function to generate WhatsApp text for a specific date
 export function generateWhatsAppText(
-    date: Date,
+    date: Date, // Takes the specific date as input
     employees: Employee[],
     schedule: ScheduleData
 ): string {
-    const formattedDate = format(date, 'EEEE, dd/MM/yyyy', { locale: ptBR }); // Use imported locale
+    if (!date || isNaN(date.getTime())) {
+        return "*Erro: Data inválida selecionada.*";
+    }
+    const formattedDate = format(date, 'EEEE, dd/MM/yyyy', { locale: ptBR });
     let text = `*Escala do Dia: ${formattedDate}*\n\n`;
     let hasEntries = false;
 
@@ -137,10 +145,10 @@ export function generateWhatsAppText(
         const entry = schedule[key];
 
         if (entry && entry.shift === 'T') { // Only include employees working ('T')
-            text += `- *${emp.name}:* ${entry.role} (${entry.baseHours})\n`;
+            text += `- *${emp.name}:* ${entry.role || 'N/A'} (${entry.baseHours || 'N/A'})\n`;
             hasEntries = true;
         } else if (entry && entry.shift === 'H') { // Also include special hours ('H')
-            text += `- *${emp.name}:* ${entry.role} (${entry.baseHours}) - *HORÁRIO ESPECIAL*\n`;
+            text += `- *${emp.name}:* ${entry.role || 'N/A'} (${entry.baseHours || 'N/A'}) - *HORÁRIO ESPECIAL*\n`;
             hasEntries = true;
         }
          // Optionally include Folga ('F')
