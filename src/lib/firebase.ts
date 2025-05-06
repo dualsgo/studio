@@ -3,6 +3,10 @@ import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { getFirestore, Firestore } from 'firebase/firestore';
 // import { getAuth } from 'firebase/auth'; // Uncomment if you need authentication
 
+// IMPORTANT: Please ensure you have a .env.local file in the root of your project
+// with your Firebase project configuration variables.
+// See .env.local.example for the required variables.
+
 // Check if essential environment variables are defined
 const requiredEnvVars = [
   'NEXT_PUBLIC_FIREBASE_API_KEY',
@@ -53,37 +57,39 @@ let app: FirebaseApp;
 let db: Firestore;
 // let auth: Auth; // Uncomment if using authentication
 
-try {
-  if (!getApps().length) {
-    app = initializeApp(firebaseConfig);
-  } else {
-    app = getApps()[0];
-  }
+// Initialize Firebase only if all required config values are present
+// This prevents errors during build or server-side rendering if env vars aren't fully set up yet.
+// The error in the console (logged above) will guide the user.
+if (missingEnvVars.length === 0) {
+    try {
+      if (!getApps().length) {
+        app = initializeApp(firebaseConfig);
+      } else {
+        app = getApps()[0];
+      }
 
-  db = getFirestore(app);
-  // auth = getAuth(app); // Uncomment if using authentication
+      db = getFirestore(app);
+      // auth = getAuth(app); // Uncomment if using authentication
 
-} catch (error) {
-   console.error("Firebase initialization failed:", error);
-   // Handle the error appropriately - maybe set a global error state?
-   // For now, we'll re-throw to make it clear initialization failed.
-   // If required env vars were missing, the console error above will provide guidance.
-   // If other errors occurred (e.g., invalid config values), this throw will surface it.
-    if (missingEnvVars.length > 0) {
-         // Avoid throwing if the error is just due to missing env vars during build/server-side
-         // The console error is sufficient guidance in that case.
-         // If we are client-side and still missing vars, the app likely won't work.
-         if (typeof window !== 'undefined') {
-             throw new Error(`Firebase initialization failed due to missing environment variables: ${missingEnvVars.join(', ')}. Please check your .env.local file and the browser console.`);
-         }
-    } else {
-        throw new Error(`Firebase initialization failed: ${error instanceof Error ? error.message : String(error)}`);
+    } catch (error) {
+       console.error("Firebase initialization failed:", error);
+       // Handle the error appropriately - maybe set a global error state?
+       // If other errors occurred (e.g., invalid config values), this throw will surface it.
+       throw new Error(`Firebase initialization failed: ${error instanceof Error ? error.message : String(error)}`);
+       // Assign dummy values or handle the error state as needed for your app to degrade gracefully
+       // For example:
+       // app = null as any; // Or some placeholder app object
+       // db = null as any;
+       // auth = null as any;
     }
-   // Assign dummy values or handle the error state as needed for your app to degrade gracefully
-   // For example:
-   // app = null as any; // Or some placeholder app object
-   // db = null as any;
-   // auth = null as any;
+} else {
+    // Assign dummy values if initialization is skipped due to missing vars
+    // This allows the app to potentially build/run without crashing immediately,
+    // relying on the console error for user correction.
+    console.warn("Firebase initialization skipped due to missing environment variables.");
+    app = null as any; // Or handle appropriately
+    db = null as any;
+    // auth = null as any;
 }
 
 
