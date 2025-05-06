@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
@@ -9,9 +8,11 @@ import {
   shiftTypeToHoursMap,
   availableRoles,
   daysOfWeek,
-  roleToEmojiMap, // Corrected import
+  roleToEmojiMap,
   getTimeOptionsForDate,
-  shiftCodeToDescription
+  shiftCodeToDescription,
+  availableShiftCodes,
+  availableShiftTypes,
 } from './types'; // Correctly import from types
 // Imports from utils.ts
 import {
@@ -24,7 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { parseISO, addDays, format as formatDate, startOfMonth, endOfMonth, isEqual, startOfDay } from 'date-fns'; // Renamed format to formatDate
 import { ptBR } from 'date-fns/locale';
 import { Button, buttonVariants } from '@/components/ui/button'; // Import buttonVariants
-import { UserPlus, FileText, MessageSquareText, RotateCcw, CloudUpload, CloudDownload, Save, Trash2 } from 'lucide-react'; // Added Trash2
+import { UserPlus, FileText, MessageSquareText, RotateCcw, CloudUpload, CloudDownload, Save, Trash2, WifiOff } from 'lucide-react'; // Added Trash2, WifiOff
 import { EditEmployeeDialog } from './EditEmployeeDialog';
 import {
   AlertDialog,
@@ -40,7 +41,7 @@ import {
 import jsPDF from 'jspdf';
 import 'jspdf-autotable'; // Import autoTable plugin
 import { cn } from '@/lib/utils'; // Import cn
-import { db, app } from '@/lib/firebase'; // Import Firestore instance
+import { db } from '@/lib/firebase'; // Import Firestore instance
 import { doc, setDoc, getDoc, collection, getDocs, writeBatch, deleteDoc } from 'firebase/firestore';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -76,7 +77,7 @@ const SAVED_SCHEDULES_COLLECTION = "savedSchedules"; // Collection for named sav
 type AppFilterState = FilterState;
 type AppPartialFilterState = Partial<AppFilterState>;
 
-// Helper to check if a date is a holiday
+// Helper to check if a date is a holiday - Memoized version
 const isHolidayFn = (holidays:Date[], date: Date): boolean => {
     if (!date || isNaN(date.getTime())) return false;
     const startOfDate = startOfDay(date);
@@ -93,6 +94,7 @@ export function ShiftMasterApp() {
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
+  const [isFirebaseConnected, setIsFirebaseConnected] = useState(!!db); // Track Firebase connection
 
   // State for managing dialogs
   const [isAddEditModalOpen, setIsAddEditModalOpen] = useState(false);
@@ -108,13 +110,20 @@ export function ShiftMasterApp() {
 
   const tableRef = useRef<HTMLDivElement>(null); // Ref for the scrollable table container
 
-  // Check if date is a holiday - moved outside ShiftMasterApp for better access
-  // Now using isHolidayFn which takes holidays array as argument
+  // Check if date is a holiday - Memoized version
   const isHoliday = useCallback((date: Date): boolean => {
     return isHolidayFn(holidays, date);
   }, [holidays]);
 
    // --- Firestore Persistence ---
+
+   const showFirebaseErrorToast = useCallback(() => {
+     toast({
+       title: "Erro de Conexão",
+       description: "Não foi possível conectar ao Firebase. Verifique a configuração e a conexão.",
+       variant: "destructive",
+     });
+   }, [toast]);
 
    // Function to prepare data for Firestore
    const prepareDataForFirestore = useCallback((): FirestoreData => {
@@ -135,6 +144,22 @@ export function ShiftMasterApp() {
   // Function to load data from Firestore
   const loadDataFromFirestore = useCallback(async (docId: string = DATA_DOC_ID, collectionName: string = SAVED_SCHEDULES_COLLECTION) => {
       setIsLoading(true);
+      if (!db) {
+          console.error("Firestore not initialized. Cannot load data.");
+          showFirebaseErrorToast();
+          const { initialEmployees, initialSchedule, initialFilters, initialHolidays } = generateInitialData();
+          setEmployees(initialEmployees);
+          setSchedule(initialSchedule);
+          setFilters(initialFilters);
+          setHolidays(initialHolidays);
+          setCurrentMonth(startOfMonth(initialFilters.selectedDate));
+          setIsLoading(false);
+          setIsClient(true);
+          setIsFirebaseConnected(false);
+          return;
+      }
+       setIsFirebaseConnected(true);
+
       try {
           const docRef = doc(db, collectionName, docId);
           const docSnap = await getDoc(docRef);
@@ -166,7 +191,7 @@ export function ShiftMasterApp() {
               setFilters(initialFilters);
               setHolidays(initialHolidays);
               setCurrentMonth(startOfMonth(initialFilters.selectedDate));
-              // Optionally save the initial data back to Firestore
+              // Save the initial data back to Firestore
               await saveDataToFirestore(DATA_DOC_ID, SAVED_SCHEDULES_COLLECTION, {
                   employees: initialEmployees,
                   schedule: initialSchedule,
@@ -196,11 +221,20 @@ export function ShiftMasterApp() {
           setIsLoading(false);
           setIsClient(true); // Ensure client-side rendering after initial load attempt
       }
-  }, [toast]);
+  }, [toast, showFirebaseErrorToast]); // Added showFirebaseErrorToast
 
 
   // Function to save data to a specific Firestore document
   const saveDataToFirestore = useCallback(async (docId: string, collectionName: string, data: FirestoreData, isAutoSave: boolean = false) => {
+      if (!db) {
+        if (!isAutoSave) {
+            console.error("Firestore not initialized. Cannot save data.");
+            showFirebaseErrorToast();
+        }
+        return; // Prevent saving if db is not available
+      }
+      setIsFirebaseConnected(true); // Assume connection if we attempt to save
+
       try {
           const docRef = doc(db, collectionName, docId);
           // Add or update metadata before saving
@@ -218,27 +252,37 @@ export function ShiftMasterApp() {
            console.log(`Data ${isAutoSave ? 'auto-' : ''}saved to Firestore with ID: ${docId}`);
       } catch (error) {
           console.error("Error saving data to Firestore:", error);
+          setIsFirebaseConnected(false); // Update connection status on save error
           if (!isAutoSave) {
               toast({ title: "Erro", description: "Falha ao salvar dados no Firebase.", variant: "destructive" });
           }
       }
-  }, [toast]);
+  }, [toast, showFirebaseErrorToast]);
 
   // Auto-save whenever employees or schedule changes
    useEffect(() => {
+       if (!db) {
+          // Optional: Show a persistent warning if firebase is down?
+          return;
+       }
+       setIsFirebaseConnected(true);
       if (!isLoading && isClient) { // Only auto-save after initial load and on client
          const autoSaveData = prepareDataForFirestore();
          // Add createdAt only if it's the first save (or doesn't exist)
          const docRef = doc(db, SAVED_SCHEDULES_COLLECTION, DATA_DOC_ID);
          getDoc(docRef).then(docSnap => {
-             if (!docSnap.exists() || !docSnap.data().metadata?.createdAt) {
-                autoSaveData.metadata = {
-                    ...autoSaveData.metadata,
-                    name: "Autosave", // Give autosave a default name
-                    createdAt: new Date().toISOString()
+             if (!docSnap.exists() || !docSnap.data()?.metadata?.createdAt) {
+                 autoSaveData.metadata = {
+                     ...autoSaveData.metadata,
+                     name: "Autosave", // Give autosave a default name
+                     createdAt: new Date().toISOString()
                  }
              }
              saveDataToFirestore(DATA_DOC_ID, SAVED_SCHEDULES_COLLECTION, autoSaveData, true); // Pass true for isAutoSave
+         }).catch(error => {
+              console.error("Error checking for existing autosave doc:", error);
+              // Still attempt to save, it might create the doc if it doesn't exist
+              saveDataToFirestore(DATA_DOC_ID, SAVED_SCHEDULES_COLLECTION, autoSaveData, true);
          });
       }
   }, [employees, schedule, filters, holidays, isLoading, isClient, prepareDataForFirestore, saveDataToFirestore]); // Added filters and holidays
@@ -255,8 +299,10 @@ export function ShiftMasterApp() {
    // --- Save/Load Dialog Logic ---
 
    const fetchSavedSchedules = useCallback(async () => {
+        if (!db) return; // Don't fetch if db is not available
         try {
-            const querySnapshot = await getDocs(collection(db, SAVED_SCHEDULES_COLLECTION));
+            const collRef = collection(db, SAVED_SCHEDULES_COLLECTION);
+            const querySnapshot = await getDocs(collRef);
             const loadedList = querySnapshot.docs
                 .map(doc => {
                     const data = doc.data() as FirestoreData;
@@ -272,11 +318,16 @@ export function ShiftMasterApp() {
             setSavedSchedules(loadedList);
         } catch (error) {
             console.error("Error fetching saved schedules:", error);
+             setIsFirebaseConnected(false);
             toast({ title: "Erro", description: "Falha ao carregar lista de escalas salvas.", variant: "destructive" });
         }
     }, [toast]);
 
     const handleSaveSchedule = useCallback(async () => {
+         if (!db) {
+            showFirebaseErrorToast();
+            return;
+         }
         if (!saveName.trim()) {
             toast({ title: "Erro", description: "Por favor, insira um nome para a escala.", variant: "destructive" });
             return;
@@ -293,14 +344,22 @@ export function ShiftMasterApp() {
         setSaveName(""); // Clear input
         setIsSaveLoadDialogOpen(false);
         fetchSavedSchedules(); // Refresh the list
-    }, [saveName, prepareDataForFirestore, saveDataToFirestore, toast, fetchSavedSchedules]);
+    }, [saveName, prepareDataForFirestore, saveDataToFirestore, toast, fetchSavedSchedules, showFirebaseErrorToast]);
 
      const handleLoadSchedule = useCallback(async (docId: string) => {
+        if (!db) {
+            showFirebaseErrorToast();
+            return;
+        }
         await loadDataFromFirestore(docId, SAVED_SCHEDULES_COLLECTION);
         setIsSaveLoadDialogOpen(false);
-    }, [loadDataFromFirestore]);
+    }, [loadDataFromFirestore, showFirebaseErrorToast]);
 
     const handleDeleteSavedSchedule = useCallback(async (docId: string) => {
+         if (!db) {
+            showFirebaseErrorToast();
+            return;
+        }
         if (!window.confirm("Tem certeza que deseja excluir esta escala salva?")) {
             return;
         }
@@ -311,9 +370,10 @@ export function ShiftMasterApp() {
             fetchSavedSchedules(); // Refresh list
         } catch (error) {
             console.error("Error deleting saved schedule:", error);
+            setIsFirebaseConnected(false);
             toast({ title: "Erro", description: "Falha ao excluir escala salva.", variant: "destructive" });
         }
-    }, [toast, fetchSavedSchedules]);
+    }, [toast, fetchSavedSchedules, showFirebaseErrorToast]);
 
 
   // --- Filter and Date Logic ---
@@ -321,16 +381,8 @@ export function ShiftMasterApp() {
   const handleFilterChange = useCallback((newFilters: AppPartialFilterState) => {
     setFilters(prev => ({ ...prev, ...newFilters }));
      // When filters change, save the current state (auto-save)
-     // Note: This might trigger frequent saves. Consider debouncing if needed.
-     const currentState = prepareDataForFirestore();
-     // Ensure filters in currentState reflect the update immediately
-     const updatedFilters = { ...currentState.filters, ...newFilters };
-     if (updatedFilters.selectedDate instanceof Date) {
-         updatedFilters.selectedDate = updatedFilters.selectedDate.toISOString();
-     }
-     currentState.filters = updatedFilters as FirestoreData['filters']; // Type assertion might be needed depending on your structure
-     saveDataToFirestore(DATA_DOC_ID, SAVED_SCHEDULES_COLLECTION, currentState, true);
-  }, [prepareDataForFirestore, saveDataToFirestore]); // Include save functions
+     // This is handled by the auto-save useEffect now
+  }, []);
 
 
   // --- Holiday Logic ---
@@ -349,11 +401,12 @@ export function ShiftMasterApp() {
             employees.forEach(emp => {
                 const key = getScheduleKey(emp.id, date);
                 const currentEntry = updatedSchedule[key];
+                 // Ensure entry exists before proceeding
                 if (currentEntry) {
                     if (isNowHoliday && currentEntry.shift === 'FOLGA') {
                         updatedSchedule[key] = { ...currentEntry, shift: 'FF', holidayReason: currentEntry.holidayReason || 'Feriado' };
                     } else if (!isNowHoliday && currentEntry.shift === 'FF') {
-                        // Revert FF to F (or T if it was a default work day and not fixed day off)
+                        // Revert FF to F or T based on defaults/fixed day off
                         const fixedDayMapping: { [key in DayOfWeek]?: number } = {};
                         daysOfWeek.forEach((day, index) => fixedDayMapping[day] = index);
                         const dayOfWeek = date.getDay();
@@ -364,11 +417,9 @@ export function ShiftMasterApp() {
                          } else if (emp.defaultRole && emp.defaultShiftType && emp.defaultShiftType !== 'Nenhum') {
                              const timeOptions = getTimeOptionsForDate(date, false); // Get times for non-holiday
                              let defaultHour = '';
-                             if (emp.defaultShiftType && emp.defaultShiftType !== 'Nenhum') {
-                                 const basicDefault = shiftTypeToHoursMap[emp.defaultShiftType] || '';
-                                 if (timeOptions.includes(basicDefault)) {
-                                     defaultHour = basicDefault;
-                                 }
+                              const basicDefault = shiftTypeToHoursMap[emp.defaultShiftType] || ''; // Get the basic default hour string
+                             if (timeOptions.includes(basicDefault)) { // Check if it's valid for the day
+                                 defaultHour = basicDefault;
                              }
                              if (!defaultHour && timeOptions.length > 0) {
                                  defaultHour = timeOptions[0];
@@ -377,15 +428,16 @@ export function ShiftMasterApp() {
                          } else {
                            updatedSchedule[key] = { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined };
                          }
-                    } else if (isNowHoliday && currentEntry.shift === 'TRABALHA') {
-                         // If it becomes a holiday but they were scheduled to work, keep T? Or FF?
-                         // Current logic: Keep T, maybe prompt user? For now, keep T
-                         // OR, more likely: If it becomes holiday, set to FF (Folga Feriado)
-                         // updatedSchedule[key] = { ...currentEntry, shift: 'FF', holidayReason: 'Feriado', role: '', baseHours: '' };
-                         // Let's stick to only changing F to FF for now when marking holiday
                     }
-                     // If unmarking holiday and it's currently FF, revert based on defaults/fixed
-                     // (This case is handled above)
+                    // Other cases remain unchanged (e.g., T remains T when marked holiday)
+                } else {
+                    // If there's no entry, create one based on holiday status
+                     if (isNowHoliday) {
+                         updatedSchedule[key] = { shift: 'FF', role: '', baseHours: '', holidayReason: 'Feriado' };
+                     } else {
+                         // If unmarking and no entry existed, assume default was F
+                         updatedSchedule[key] = { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined };
+                     }
                 }
             });
             return updatedSchedule;
@@ -396,9 +448,9 @@ export function ShiftMasterApp() {
      });
      toast({
        title: "Feriado Atualizado",
-       description: `Dia ${formatDate(date, 'dd/MM')} ${isHoliday(date) ? 'removido como' : 'marcado como'} feriado.`
+       description: `Dia ${formatDate(date, 'dd/MM')} ${!isHoliday(date) ? 'removido como' : 'marcado como'} feriado.` // Logic inverted because state updates after toast
      });
-   }, [holidays, toast, isHoliday, employees]); // Added dependencies
+   }, [holidays, toast, isHoliday, employees, shiftTypeToHoursMap]); // Added shiftTypeToHoursMap
 
 
   // Memoized date range for the current month
@@ -446,153 +498,209 @@ export function ShiftMasterApp() {
     setEmployeeToDelete(empId);
   }, []);
 
-  const confirmDeleteEmployee = useCallback(() => {
-    if (employeeToDelete !== null) {
-        const newEmployees = employees.filter(emp => emp.id !== employeeToDelete);
-        const newSchedule = { ...schedule };
-        // Remove schedule entries for the deleted employee
-        Object.keys(newSchedule).forEach(key => {
-            const [empIdStr] = key.split('-');
-            if (parseInt(empIdStr) === employeeToDelete) {
-                delete newSchedule[key];
+  const confirmDeleteEmployee = useCallback(async () => {
+      if (!db) {
+        showFirebaseErrorToast();
+        setEmployeeToDelete(null);
+        return;
+      }
+      if (employeeToDelete !== null) {
+        const employeeName = employees.find(e => e.id === employeeToDelete)?.name || "Colaborador";
+        try {
+            // Delete employee from state first for responsiveness
+            const currentEmployees = employees;
+            const currentSchedule = schedule;
+            setEmployees(prev => prev.filter(emp => emp.id !== employeeToDelete));
+            setSchedule(prev => {
+                const nextSchedule = { ...prev };
+                Object.keys(nextSchedule).forEach(key => {
+                    if (key.startsWith(`${employeeToDelete}-`)) {
+                        delete nextSchedule[key];
+                    }
+                });
+                return nextSchedule;
+            });
+            setEmployeeToDelete(null); // Close confirmation dialog
+
+            // Then, attempt to delete from Firestore
+            const docRef = doc(db, SAVED_SCHEDULES_COLLECTION, DATA_DOC_ID);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                const data = docSnap.data() as FirestoreData;
+                const updatedEmployees = data.employees.filter(emp => emp.id !== employeeToDelete);
+                const updatedSchedule = { ...data.schedule };
+                Object.keys(updatedSchedule).forEach(key => {
+                    if (key.startsWith(`${employeeToDelete}-`)) {
+                        delete updatedSchedule[key];
+                    }
+                });
+                 await saveDataToFirestore(DATA_DOC_ID, SAVED_SCHEDULES_COLLECTION, {
+                    ...data, // Keep other data like filters, holidays
+                    employees: updatedEmployees,
+                    schedule: updatedSchedule,
+                }, false); // Explicit save, show toast
+                toast({ title: "Sucesso", description: `${employeeName} removido.` });
             }
-        });
 
-        setEmployees(newEmployees);
-        setSchedule(newSchedule);
-        setEmployeeToDelete(null); // Close confirmation dialog
-        toast({ title: "Sucesso", description: "Colaborador removido." });
+             // Optionally delete from saved schedules too (more complex logic needed)
+             // Consider if deleting an employee should cascade to saved schedules
+
+        } catch (error) {
+            console.error("Error deleting employee from Firestore:", error);
+             setIsFirebaseConnected(false);
+            toast({ title: "Erro", description: `Falha ao remover ${employeeName}. Por favor, tente novamente.`, variant: "destructive" });
+            // Revert state if Firestore deletion fails
+            // setEmployees(currentEmployees);
+            // setSchedule(currentSchedule);
+             // Re-open dialog if needed or handle error state
+        }
     }
-  }, [employeeToDelete, employees, schedule, toast]);
+  }, [employeeToDelete, employees, schedule, toast, saveDataToFirestore, showFirebaseErrorToast]); // Add saveDataToFirestore and showFirebaseErrorToast
 
 
-  const handleSaveEmployee = useCallback((employeeData: Employee) => {
+  const handleSaveEmployee = useCallback(async (employeeData: Employee) => {
+      if (!db) {
+        showFirebaseErrorToast();
+        setIsAddEditModalOpen(false);
+        setEditingEmployee(null);
+        return;
+      }
+
     let updatedScheduleRequired = false;
     let oldEmployeeData: Employee | undefined; // Store old data for comparison
     const updatedSchedule = { ...schedule }; // Copy schedule for potential updates
     const isNew = !employeeData.id || employeeData.id === 0; // Check if it's a new employee
+    let finalEmployeeData: Employee; // To store the final employee data with ID
 
-    setEmployees(prevEmployees => {
-      if (isNew) {
-        // Add new employee
-        const newId = prevEmployees.length > 0 ? Math.max(...prevEmployees.map(e => e.id)) + 1 : 1;
-        const newEmployee = { ...employeeData, id: newId };
-        updatedScheduleRequired = true; // New employee needs a schedule generated
-        return [...prevEmployees, newEmployee];
-      } else {
-        // Update existing employee
-        const index = prevEmployees.findIndex(emp => emp.id === employeeData.id);
+    // --- Update Employees State ---
+    if (isNew) {
+        const newId = employees.length > 0 ? Math.max(...employees.map(e => e.id)) + 1 : 1;
+        finalEmployeeData = { ...employeeData, id: newId };
+         setEmployees(prevEmployees => [...prevEmployees, finalEmployeeData]);
+        updatedScheduleRequired = true;
+    } else {
+         finalEmployeeData = { ...employeeData, id: employeeData.id }; // Ensure ID is present
+        const index = employees.findIndex(emp => emp.id === employeeData.id);
         if (index > -1) {
-          oldEmployeeData = prevEmployees[index]; // Store old data
-          // Check if key properties affecting schedule generation changed
-          if (oldEmployeeData.fixedDayOff !== employeeData.fixedDayOff ||
-              oldEmployeeData.defaultRole !== employeeData.defaultRole ||
-              oldEmployeeData.defaultShiftType !== employeeData.defaultShiftType) {
-            updatedScheduleRequired = true;
-          }
-          const newEmployees = [...prevEmployees];
-          newEmployees[index] = { ...employeeData, id: employeeData.id }; // Ensure ID is preserved
-          return newEmployees;
+            oldEmployeeData = employees[index];
+            if (oldEmployeeData.fixedDayOff !== employeeData.fixedDayOff ||
+                oldEmployeeData.defaultRole !== employeeData.defaultRole ||
+                oldEmployeeData.defaultShiftType !== employeeData.defaultShiftType) {
+                updatedScheduleRequired = true;
+            }
+             setEmployees(prevEmployees => {
+                 const newEmployees = [...prevEmployees];
+                 newEmployees[index] = finalEmployeeData;
+                 return newEmployees;
+             });
+        } else {
+             console.error("Trying to update non-existent employee", employeeData);
+             return; // Exit if employee not found
         }
-        return prevEmployees; // Should not happen if employeeData.id exists
-      }
-    });
+    }
 
-    // --- Update Schedule IF required (New Employee or Changed Defaults/Fixed Day) ---
+    // --- Update Schedule State IF required ---
     if (updatedScheduleRequired) {
-        const empToProcess = isNew ? employees.find(e => e.id === employeeData.id) || employeeData : employeeData; // Get the final employee data
-        if (empToProcess) {
-            const monthStart = startOfMonth(currentMonth);
-            const monthEnd = endOfMonth(currentMonth);
-            const datesToUpdate = getDatesInRange(monthStart, monthEnd);
-            const fixedDayMapping: { [key in DayOfWeek]?: number } = {};
-            daysOfWeek.forEach((day, index) => fixedDayMapping[day] = index);
+        const monthStart = startOfMonth(currentMonth);
+        const monthEnd = endOfMonth(currentMonth);
+        const datesToUpdate = getDatesInRange(monthStart, monthEnd);
+        const fixedDayMapping: { [key in DayOfWeek]?: number } = {};
+        daysOfWeek.forEach((day, index) => fixedDayMapping[day] = index);
 
-            datesToUpdate.forEach(date => {
-                const key = getScheduleKey(empToProcess.id, date);
-                const dayOfWeek = date.getDay();
-                const isNewFixedDayOff = empToProcess.fixedDayOff && dayOfWeek === fixedDayMapping[empToProcess.fixedDayOff];
-                const wasOldFixedDayOff = !isNew && oldEmployeeData?.fixedDayOff && dayOfWeek === fixedDayMapping[oldEmployeeData.fixedDayOff];
-                const isDayHoliday = isHoliday(date);
+        datesToUpdate.forEach(date => {
+            const key = getScheduleKey(finalEmployeeData.id, date);
+            const dayOfWeek = date.getDay();
+            const isNewFixedDayOff = finalEmployeeData.fixedDayOff && dayOfWeek === fixedDayMapping[finalEmployeeData.fixedDayOff];
+            const wasOldFixedDayOff = !isNew && oldEmployeeData?.fixedDayOff && dayOfWeek === fixedDayMapping[oldEmployeeData.fixedDayOff];
+            const isDayHoliday = isHoliday(date);
 
-                let entry: ScheduleEntry = updatedSchedule[key] || { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined };
+            let entry: ScheduleEntry = updatedSchedule[key] || { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined };
 
-                 // --- Logic for updating/creating schedule entry ---
-
-                 // 1. If it's the NEW fixed day off, force FOLGA
-                 if (isNewFixedDayOff) {
-                    entry = { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined };
+             // 1. If it's the NEW fixed day off, force FOLGA
+             if (isNewFixedDayOff) {
+                entry = { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined };
+             }
+              // 2. If it WAS the old fixed day off but NOT the new one, or if it's a NEW employee and NOT their fixed day
+             else if (isNew || (wasOldFixedDayOff && !isNewFixedDayOff)) {
+                // Try to set default TRABALHA schedule first
+                if (finalEmployeeData.defaultRole && finalEmployeeData.defaultShiftType && finalEmployeeData.defaultShiftType !== 'Nenhum') {
+                     entry.shift = 'TRABALHA';
+                     entry.role = finalEmployeeData.defaultRole;
+                     const dayOptions = getTimeOptionsForDate(date, isDayHoliday);
+                     let defaultHour = '';
+                     const basicDefault = shiftTypeToHoursMap[finalEmployeeData.defaultShiftType] || '';
+                     if (dayOptions.includes(basicDefault)) {
+                         defaultHour = basicDefault;
+                     }
+                     if (!defaultHour && dayOptions.length > 0) {
+                         defaultHour = dayOptions[0];
+                     }
+                     entry.baseHours = defaultHour;
+                     entry.holidayReason = undefined;
+                } else {
+                     entry = { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined };
+                }
+                // 3. If it's a holiday AND the result is FOLGA, change to FF
+                 if (isDayHoliday && entry.shift === 'FOLGA') {
+                     entry.shift = 'FF';
+                     entry.holidayReason = 'Feriado';
+                     entry.role = '';
+                     entry.baseHours = '';
                  }
-                  // 2. If it WAS the old fixed day off but NOT the new one, or if it's a NEW employee and NOT their fixed day
-                 else if (isNew || (wasOldFixedDayOff && !isNewFixedDayOff)) {
-                    // Try to set default TRABALHA schedule first
-                    if (empToProcess.defaultRole && empToProcess.defaultShiftType && empToProcess.defaultShiftType !== 'Nenhum') {
-                         entry.shift = 'TRABALHA';
-                         entry.role = empToProcess.defaultRole;
-                         const dayOptions = getTimeOptionsForDate(date, isDayHoliday);
+             }
+             // 4. If not fixed day off change/new emp, BUT it's a holiday, ensure F becomes FF
+             else if (isDayHoliday && entry.shift === 'FOLGA') {
+                 entry.shift = 'FF';
+                 entry.holidayReason = entry.holidayReason || 'Feriado';
+                 entry.role = '';
+                 entry.baseHours = '';
+             }
+              // 5. If role/shift defaults changed, update T entries IF they have empty role/hours
+             else if (!isNew && !isFixedDayOff && !isDayHoliday && entry.shift === 'TRABALHA' && finalEmployeeData.defaultRole && finalEmployeeData.defaultShiftType && finalEmployeeData.defaultShiftType !== 'Nenhum') {
+                   if (!entry.role) entry.role = finalEmployeeData.defaultRole;
+                   if (!entry.baseHours) {
+                        const dayOptions = getTimeOptionsForDate(date, false);
                          let defaultHour = '';
-                         if (empToProcess.defaultShiftType && empToProcess.defaultShiftType !== 'Nenhum') {
-                            const basicDefault = shiftTypeToHoursMap[empToProcess.defaultShiftType] || '';
-                             if (dayOptions.includes(basicDefault)) {
-                                 defaultHour = basicDefault;
-                             }
+                         const basicDefault = shiftTypeToHoursMap[finalEmployeeData.defaultShiftType] || '';
+                         if (dayOptions.includes(basicDefault)) {
+                             defaultHour = basicDefault;
                          }
                          if (!defaultHour && dayOptions.length > 0) {
                              defaultHour = dayOptions[0];
                          }
                          entry.baseHours = defaultHour;
-                         entry.holidayReason = undefined; // Ensure reason is cleared
-                    } else {
-                        // If no default work schedule, set to FOLGA
-                         entry = { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined };
-                    }
-                    // 3. If it's a holiday AND the result is FOLGA, change to FF
-                     if (isDayHoliday && entry.shift === 'FOLGA') {
-                         entry.shift = 'FF';
-                         entry.holidayReason = 'Feriado'; // Default reason
-                         entry.role = ''; // Clear role/hours for FF
-                         entry.baseHours = '';
-                     }
-                 }
-                 // 4. If it's not a fixed day off change and not a new employee,
-                 //    AND it's a holiday, ensure F becomes FF (if not already T)
-                 else if (isDayHoliday && entry.shift === 'FOLGA') {
-                     entry.shift = 'FF';
-                     entry.holidayReason = entry.holidayReason || 'Feriado'; // Keep existing reason or add default
-                     entry.role = '';
-                     entry.baseHours = '';
-                 }
-                  // 5. If it's not a fixed day off change, not new, not holiday,
-                  //    but maybe role/shift default changed - only update T entries IF they were empty
-                  else if (!isNew && !isFixedDayOff && !isDayHoliday && entry.shift === 'TRABALHA' && empToProcess.defaultRole && empToProcess.defaultShiftType && empToProcess.defaultShiftType !== 'Nenhum') {
-                       if (!entry.role) entry.role = empToProcess.defaultRole;
-                       if (!entry.baseHours) {
-                            const dayOptions = getTimeOptionsForDate(date, false); // Use non-holiday times
-                             let defaultHour = '';
-                             if (empToProcess.defaultShiftType && empToProcess.defaultShiftType !== 'Nenhum') {
-                                 const basicDefault = shiftTypeToHoursMap[empToProcess.defaultShiftType] || '';
-                                 if (dayOptions.includes(basicDefault)) {
-                                     defaultHour = basicDefault;
-                                 }
-                             }
-                             if (!defaultHour && dayOptions.length > 0) {
-                                 defaultHour = dayOptions[0];
-                             }
-                             entry.baseHours = defaultHour;
-                       }
-                  }
-                // Otherwise, keep the existing schedule entry for the day
+                   }
+              }
+            // Otherwise, keep existing entry
 
-                updatedSchedule[key] = entry;
-            });
-             setSchedule(updatedSchedule); // Update schedule state
-        }
+            updatedSchedule[key] = entry;
+        });
+         setSchedule(updatedSchedule); // Update schedule state
     }
 
+    // --- Firestore Update (after state updates) ---
+     const finalEmployeesState = isNew ? [...employees, finalEmployeeData] : employees.map(emp => emp.id === finalEmployeeData.id ? finalEmployeeData : emp);
+     const finalScheduleState = updatedScheduleRequired ? updatedSchedule : schedule;
+
+     const dataToSave: FirestoreData = {
+         employees: finalEmployeesState,
+         schedule: finalScheduleState,
+         filters: {
+             ...filters,
+             selectedDate: filters.selectedDate?.toISOString(),
+         },
+         holidays: holidays.map(h => h.toISOString()),
+         // Preserve existing metadata if editing, otherwise set new for add
+         metadata: isNew
+             ? { createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+             : { ...prepareDataForFirestore().metadata, updatedAt: new Date().toISOString() },
+     };
+     await saveDataToFirestore(DATA_DOC_ID, SAVED_SCHEDULES_COLLECTION, dataToSave, false); // Explicit save
+
     setIsAddEditModalOpen(false);
-    v(null); // Clear editing employee
+    setEditingEmployee(null); // Clear editing employee
     toast({ title: "Sucesso", description: `Colaborador ${isNew ? 'adicionado' : 'atualizado'}.` });
-  }, [schedule, toast, currentMonth, isHoliday, employees]); // Added employees dependency
+  }, [schedule, toast, currentMonth, isHoliday, employees, filters, holidays, saveDataToFirestore, showFirebaseErrorToast, prepareDataForFirestore]); // Added dependencies
 
 
   // --- Shift Change Logic ---
@@ -627,7 +735,16 @@ export function ShiftMasterApp() {
                 }
                 updatedEntry.baseHours = determinedDefaultHours;
             }
+             // Ensure baseHours is valid for the day if it was defaulted
+             if (!getTimeOptionsForDate(date, dayIsHoliday).includes(updatedEntry.baseHours) && getTimeOptionsForDate(date, dayIsHoliday).length > 0) {
+                updatedEntry.baseHours = getTimeOptionsForDate(date, dayIsHoliday)[0];
+             }
         }
+         // Ensure baseHours is valid for the day even if not defaulted (e.g., after holiday change)
+        else if (updatedEntry.baseHours && !getTimeOptionsForDate(date, dayIsHoliday).includes(updatedEntry.baseHours) && getTimeOptionsForDate(date, dayIsHoliday).length > 0) {
+            updatedEntry.baseHours = getTimeOptionsForDate(date, dayIsHoliday)[0];
+        }
+
       } else if (newShift === 'FF') {
         // If switching TO 'FF', clear role/hours
         updatedEntry.role = '';
@@ -638,7 +755,7 @@ export function ShiftMasterApp() {
 
       return { ...prev, [key]: updatedEntry };
     });
-  }, [employees, isHoliday]); // Add employees and isHoliday as dependencies
+  }, [employees, isHoliday, shiftTypeToHoursMap]); // Add dependencies
 
   const handleDetailChange = useCallback((empId: number, date: Date, field: 'role' | 'baseHours' | 'holidayReason', value: string) => {
       const key = getScheduleKey(empId, date);
@@ -764,6 +881,7 @@ export function ShiftMasterApp() {
         const legendY = pageHeight - margin - 15; // Position legend near the bottom
         doc.setFontSize(8);
         let currentX = margin;
+        let currentY = legendY; // Renamed m to currentY
 
         // Add background color rectangles for the legend
         const rectHeight = 6;
@@ -778,30 +896,42 @@ export function ShiftMasterApp() {
 
             if (fillColor) {
                 doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
-                doc.rect(currentX, legendY - rectHeight / 1.5, rectWidth, rectHeight, 'F');
+                doc.rect(currentX, currentY - rectHeight / 1.5, rectWidth, rectHeight, 'F');
             }
              doc.setTextColor(0);
-             doc.text(`${code}: ${description}`, currentX + rectWidth + 2, legendY);
-             currentX += doc.getTextWidth(`${code}: ${description}`) + 25; // Adjust spacing
-
-            // Prevent legend going off-page
-            if (currentX > pageWidth - margin - 50) { // Adjust threshold as needed
+             const textWidth = doc.getTextWidth(`${code}: ${description}`) + 25; // Adjust spacing
+            if (currentX + textWidth > pageWidth - margin) { // Check if it fits
                 currentX = margin;
-                m += 10; // Move to next line
+                currentY += 10; // Move to next line
+                 // Re-draw the rectangle for the new line
+                 if (fillColor) {
+                    doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
+                    doc.rect(currentX, currentY - rectHeight / 1.5, rectWidth, rectHeight, 'F');
+                 }
             }
+             doc.text(`${code}: ${description}`, currentX + rectWidth + 2, currentY);
+             currentX += textWidth;
+
+
         });
 
          // Holiday indicator legend
-         // Draw a cell with the holiday border style
+         const holidayText = "= Feriado";
+         const holidayTextWidth = doc.getTextWidth(holidayText) + 25;
+          if (currentX + holidayTextWidth > pageWidth - margin) {
+             currentX = margin;
+             currentY += 10;
+         }
+
          const holidayCellX = currentX;
-         const holidayCellY = legendY - rectHeight / 1.5;
+         const holidayCellY = currentY - rectHeight / 1.5;
          doc.setFillColor(255, 255, 255); // White background
          doc.setDrawColor(52, 152, 219); // Blue border
          doc.setLineWidth(0.5);
          doc.rect(holidayCellX, holidayCellY, rectWidth, rectHeight, 'FD'); // Draw and fill with border
          doc.setTextColor(0);
-         doc.text("= Feriado", holidayCellX + rectWidth + 2, legendY);
-         currentX += doc.getTextWidth(" = Feriado") + 25;
+         doc.text(holidayText, holidayCellX + rectWidth + 2, currentY);
+         // currentX += holidayTextWidth; // No need to update currentX if it's the last item
 
          // Reset draw/fill colors if needed
          doc.setDrawColor(0);
@@ -837,7 +967,12 @@ export function ShiftMasterApp() {
      setIsResetConfirmOpen(true);
   }, []);
 
- const confirmResetMonth = useCallback(() => {
+ const confirmResetMonth = useCallback(async () => {
+      if (!db) {
+          showFirebaseErrorToast();
+          setIsResetConfirmOpen(false);
+          return;
+       }
     const monthStart = startOfMonth(currentMonth);
     const monthEnd = endOfMonth(currentMonth);
     const datesToUpdate = getDatesInRange(monthStart, monthEnd);
@@ -877,17 +1012,26 @@ export function ShiftMasterApp() {
     });
 
     setSchedule(updatedSchedule);
+    // Also update Firestore
+    const dataToSave = prepareDataForFirestore();
+    dataToSave.schedule = updatedSchedule; // Ensure the updated schedule is included
+    await saveDataToFirestore(DATA_DOC_ID, SAVED_SCHEDULES_COLLECTION, dataToSave, false); // Explicit save
+
     setIsResetConfirmOpen(false); // Close confirmation dialog
     toast({ title: "Sucesso", description: `Escala do mês de ${formatDate(currentMonth, "MMMM yyyy", { locale: ptBR })} zerada para 'Folga'.` });
-  }, [currentMonth, schedule, employees, toast, isHoliday]); // Add dependencies
+  }, [currentMonth, schedule, employees, toast, isHoliday, saveDataToFirestore, showFirebaseErrorToast, prepareDataForFirestore]); // Add dependencies
 
 
 
     // --- Save/Load Dialog Trigger ---
     const handleOpenSaveLoadDialog = useCallback(() => {
+       if (!db) {
+           showFirebaseErrorToast();
+           return;
+       }
       fetchSavedSchedules(); // Refresh list before opening
       setIsSaveLoadDialogOpen(true);
-  }, [fetchSavedSchedules]);
+  }, [fetchSavedSchedules, showFirebaseErrorToast]);
 
 
   // Memoized date range for the current month
@@ -908,6 +1052,19 @@ export function ShiftMasterApp() {
       <div className="flex flex-col sm:flex-row justify-between items-center mb-4 flex-wrap gap-2">
         <h1 className="text-xl sm:text-2xl font-bold text-primary text-center sm:text-left">ShiftMaster</h1>
         <div className="flex items-center space-x-1 sm:space-x-2 flex-wrap gap-1 justify-center sm:justify-end">
+           {/* Firebase Status Indicator */}
+             {!isFirebaseConnected && (
+                <TooltipProvider delayDuration={100}>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <WifiOff className="h-5 w-5 text-destructive" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                            <p>Erro de conexão com o Firebase. As alterações podem não ser salvas.</p>
+                        </TooltipContent>
+                    </Tooltip>
+                </TooltipProvider>
+            )}
           {/* Action Buttons */}
           <Button onClick={generatePDF} variant="outline" size="sm">
             <FileText className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> PDF (Mês)
@@ -932,7 +1089,7 @@ export function ShiftMasterApp() {
          filters={filters}
          employees={employees}
          roles={availableRoles} // Use imported availableRoles
-         onFilterChange={handleFilterChange}
+         onFilterChange={handleFilterChange} // Updated filters
       />
 
       {/* Month Navigation */}
@@ -1010,6 +1167,7 @@ export function ShiftMasterApp() {
                         <DialogTitle>Salvar / Carregar Escala</DialogTitle>
                         <DialogDescription>
                            Salve a escala atual com um nome ou carregue uma escala salva anteriormente.
+                           { !isFirebaseConnected && <span className="text-destructive font-semibold block mt-1"> (Firebase desconectado - Salvar/Carregar indisponível)</span>}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
@@ -1024,8 +1182,9 @@ export function ShiftMasterApp() {
                                 value={saveName}
                                 onChange={(e) => setSaveName(e.target.value)}
                                 className="flex-grow"
+                                disabled={!isFirebaseConnected}
                             />
-                            <Button onClick={handleSaveSchedule} size="sm">
+                            <Button onClick={handleSaveSchedule} size="sm" disabled={!isFirebaseConnected}>
                                 <Save className="mr-1 h-4 w-4" /> Salvar
                             </Button>
                             </div>
@@ -1034,7 +1193,9 @@ export function ShiftMasterApp() {
                         {/* Load Section */}
                         <div className="space-y-2">
                             <h4 className="font-medium text-sm">Carregar Escala Salva</h4>
-                            {savedSchedules.length === 0 ? (
+                            {!isFirebaseConnected ? (
+                                <p className="text-sm text-destructive">Firebase desconectado.</p>
+                            ): savedSchedules.length === 0 ? (
                                 <p className="text-sm text-muted-foreground">Nenhuma escala salva encontrada.</p>
                             ) : (
                                 <ul className="max-h-60 overflow-y-auto space-y-1 border rounded p-2">
@@ -1044,11 +1205,11 @@ export function ShiftMasterApp() {
                                                 {saved.name} <span className="text-xs text-muted-foreground">({formatDate(parseISO(saved.timestamp), 'dd/MM/yy HH:mm')})</span>
                                             </span>
                                             <div className="flex space-x-1">
-                                                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleLoadSchedule(saved.id)}>
+                                                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleLoadSchedule(saved.id)} disabled={!isFirebaseConnected}>
                                                       <CloudDownload className="h-4 w-4 text-primary" />
                                                       <span className="sr-only">Carregar</span>
                                                  </Button>
-                                                 <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive/90" onClick={() => handleDeleteSavedSchedule(saved.id)}>
+                                                 <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive/90" onClick={() => handleDeleteSavedSchedule(saved.id)} disabled={!isFirebaseConnected}>
                                                       <Trash2 className="h-4 w-4" />
                                                       <span className="sr-only">Excluir</span>
                                                  </Button>
