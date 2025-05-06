@@ -69,7 +69,11 @@ export const getTimeOptionsForDate = (date: Date): string[] => {
     const dayOfWeek = date.getDay(); // 0 = Sunday, ..., 6 = Saturday
 
     // TODO: Add holiday detection logic here.
-    // If isHoliday(date), return [...holidayTimes.Abertura, ...holidayTimes.Fechamento];
+    // For now, let's assume no holidays for simplicity
+    // const isHoliday = false; // Replace with actual holiday check
+    // if (isHoliday) {
+    //     return [...holidayTimes.Abertura, ...holidayTimes.Fechamento];
+    // }
 
     if (dayOfWeek === 0) { // Sunday
         return [...sundayTimes.Abertura, ...sundayTimes.Fechamento];
@@ -80,7 +84,18 @@ export const getTimeOptionsForDate = (date: Date): string[] => {
     }
 };
 
+// Map roles to emojis for WhatsApp text
+export const roleToEmojiMap: Record<string, string> = {
+    'Caixa': '🔴',
+    'Vendas': '🔵',
+    'Estoque': '⚫', // Added example for Estoque
+    'Fiscal': '🟣', // Added example for Fiscal
+    'Pacote': '🟢',
+    'Organização': '🟡',
+    'Outro': '⚪', // Default/Other
+};
 
 export const availableRoles = ['Caixa', 'Vendas', 'Estoque', 'Fiscal', 'Pacote', 'Organização', 'Outro']; // Added 'Outro'
 export const daysOfWeek: DayOfWeek[] = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 export const availableShiftTypes: ShiftType[] = ['Abertura', 'Intermediário', 'Fechamento', 'Nenhum'];
+```

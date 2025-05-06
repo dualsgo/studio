@@ -41,41 +41,48 @@ export function ShiftTable({
        const key = getScheduleKey(empId, date);
        const currentShift = schedule[key]?.shift;
 
+       // Violations only apply if the shift is 'T' (Trabalha)
        if (currentShift !== 'T') {
            return { consecutiveDays: false, consecutiveSundays: false, fixedDayOff: false };
        }
 
-       // 1. Consecutive Days Check (> 6 ending here)
+       // 1. Consecutive Days Check (> 6 ending *on this date*)
        let consecutiveDaysCount = 0;
-       for (let i = 0; i < 7; i++) {
+       for (let i = 0; i < 7; i++) { // Check this date and 6 before it
            const checkDate = new Date(date);
            checkDate.setDate(date.getDate() - i);
-           if (schedule[getScheduleKey(empId, checkDate)]?.shift === 'T') consecutiveDaysCount++;
-           else if (i > 0) break;
+           if (schedule[getScheduleKey(empId, checkDate)]?.shift === 'T') {
+                consecutiveDaysCount++;
+           } else if (i > 0) { // Stop checking backwards if a non-T day is found
+                break;
+           }
        }
        const consecutiveDaysViolation = consecutiveDaysCount > 6;
 
-       // 2. Consecutive Sundays Check (> 3 ending here)
+       // 2. Consecutive Sundays Check (> 3 ending *on this date*)
        let consecutiveSundaysViolation = false;
-       if (date.getDay() === 0) {
+       if (date.getDay() === 0) { // Check only if today is Sunday
            let consecutiveSundaysCount = 0;
-           for (let i = 0; i < 4; i++) {
+           for (let i = 0; i < 4; i++) { // Check this Sunday and 3 before it
                const checkSunday = new Date(date);
                checkSunday.setDate(date.getDate() - i * 7);
-               if (schedule[getScheduleKey(empId, checkSunday)]?.shift === 'T') consecutiveSundaysCount++;
-               else break;
+               if (schedule[getScheduleKey(empId, checkSunday)]?.shift === 'T') {
+                    consecutiveSundaysCount++;
+               } else {
+                    break; // Stop checking backwards if a non-T Sunday is found
+               }
            }
            consecutiveSundaysViolation = consecutiveSundaysCount > 3;
        }
 
-        // 3. Fixed Day Off Check
+        // 3. Fixed Day Off Check (Working on the designated fixed day off)
         const dayOfWeek = date.getDay(); // 0..6
         const fixedDayMapping: { [key in DayOfWeek]?: number } = {
             "Domingo": 0, "Segunda": 1, "Terça": 2, "Quarta": 3, "Quinta": 4, "Sexta": 5, "Sábado": 6
         };
         const fixedDayNum = employee.fixedDayOff ? fixedDayMapping[employee.fixedDayOff] : undefined;
-        const fixedDayOffViolation = fixedDayNum !== undefined && dayOfWeek === fixedDayNum && currentShift === 'T';
-
+        // Violation occurs if today is the fixed day off AND the shift is 'T'
+        const fixedDayOffViolation = fixedDayNum !== undefined && dayOfWeek === fixedDayNum; // Simplified: Violation if it's the fixed day and shift is 'T' (checked earlier)
 
        return {
            consecutiveDays: consecutiveDaysViolation,
@@ -87,18 +94,20 @@ export function ShiftTable({
 
   return (
     <div className="relative overflow-auto w-full h-full">
-      <Table className="min-w-full border-collapse relative">
-        <TableHeader className="sticky top-0 z-10 bg-background shadow-sm">
+      <Table className="min-w-full border-collapse relative table-fixed"> {/* Added table-fixed */}
+        <TableHeader className="sticky top-0 z-10 bg-card shadow-sm"> {/* Changed bg-background to bg-card */}
             <TableRow>
-              <TableHead className="sticky left-0 z-20 bg-background p-2 border w-40 min-w-[160px] text-center font-semibold">
+              {/* Sticky Employee Name Header */}
+              <TableHead className="sticky left-0 z-20 bg-card p-2 border w-40 min-w-[160px] text-center font-semibold">
                 Colaborador
               </TableHead>
-               <TableHead className="sticky left-[160px] z-20 bg-background p-2 border w-24 min-w-[96px] text-center font-semibold"> {/* Adjust left offset */}
+              {/* Sticky Actions Header */}
+               <TableHead className="sticky left-[160px] z-20 bg-card p-2 border w-24 min-w-[96px] max-w-[96px] text-center font-semibold"> {/* Adjust left offset */}
                  Ações
                </TableHead>
-              {/* Use the passed dates prop */}
+              {/* Date Headers */}
               {dates.map(date => (
-                <TableHead key={date.toISOString()} className="p-2 border w-24 min-w-[96px] text-center font-semibold">
+                <TableHead key={date.toISOString()} className="p-1 border w-20 min-w-[80px] max-w-[80px] text-center font-semibold text-xs"> {/* Adjusted width, padding, font size */}
                   {/* Use EEE dd for short day name and date */}
                   {format(date, 'EEE dd', { locale: ptBR })}
                 </TableHead>
@@ -108,25 +117,26 @@ export function ShiftTable({
          <TableBody>
           {employees.length === 0 ? (
              <TableRow>
+                {/* Span across all columns: 1 (Name) + 1 (Actions) + number of dates */}
                 <TableCell colSpan={dates.length + 2} className="text-center p-8 text-muted-foreground">
-                    Nenhum colaborador encontrado.
+                    Nenhum colaborador encontrado para os filtros aplicados.
                 </TableCell>
             </TableRow>
           ) : (
             employees.map(emp => (
-                <TableRow key={emp.id} className="hover:bg-muted/10 group">
-                  {/* Employee Name Cell */}
-                  <TableCell className="sticky left-0 z-10 bg-background group-hover:bg-muted/10 p-2 border font-medium whitespace-nowrap w-40 min-w-[160px]">
+                <TableRow key={emp.id} className="hover:bg-muted/10 group h-16"> {/* Increased row height */}
+                  {/* Sticky Employee Name Cell */}
+                  <TableCell className="sticky left-0 z-10 bg-card group-hover:bg-muted/10 p-2 border font-medium whitespace-nowrap w-40 min-w-[160px]">
                       {emp.name}
                   </TableCell>
 
-                   {/* Actions Cell */}
-                   <TableCell className="sticky left-[160px] z-10 bg-background group-hover:bg-muted/10 p-1 border w-24 min-w-[96px] text-center">
-                      <div className="flex justify-center items-center space-x-1">
+                   {/* Sticky Actions Cell */}
+                   <TableCell className="sticky left-[160px] z-10 bg-card group-hover:bg-muted/10 p-1 border w-24 min-w-[96px] max-w-[96px] text-center">
+                      <div className="flex justify-center items-center space-x-1 h-full"> {/* Ensure vertical centering */}
                            <TooltipProvider delayDuration={100}>
                                <Tooltip>
                                    <TooltipTrigger asChild>
-                                       <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onEditEmployee(emp)}>
+                                       <Button aria-label={`Editar ${emp.name}`} variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEditEmployee(emp)}>
                                            <Edit className="h-4 w-4" />
                                        </Button>
                                    </TooltipTrigger>
@@ -138,7 +148,7 @@ export function ShiftTable({
                           <TooltipProvider delayDuration={100}>
                               <Tooltip>
                                   <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive/90" onClick={() => onDeleteEmployee(emp.id)}>
+                                      <Button aria-label={`Remover ${emp.name}`} variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive/90" onClick={() => onDeleteEmployee(emp.id)}>
                                           <Trash2 className="h-4 w-4" />
                                       </Button>
                                   </TooltipTrigger>
@@ -150,54 +160,59 @@ export function ShiftTable({
                       </div>
                   </TableCell>
 
-                  {/* Schedule Cells - Use the passed dates prop */}
+                  {/* Schedule Cells */}
                   {dates.map(date => {
                     const key = getScheduleKey(emp.id, date);
                     const cellData = schedule[key];
                     const violations = checkViolations(emp.id, date);
-                    const hasViolation = violations.consecutiveDays || violations.consecutiveSundays || violations.fixedDayOff;
+                    // Violation exists if the shift is 'T' and any violation flag is true
+                    const hasViolation = cellData?.shift === 'T' && (violations.consecutiveDays || violations.consecutiveSundays || violations.fixedDayOff);
 
-                    const currentShift = cellData?.shift || 'D';
+                    const currentShift = cellData?.shift || 'D'; // Default to Disponible
                     let roleForCell = '';
                     let hoursForCell = '';
 
+                    // Populate role/hours only if the shift is 'T' or 'H'
                     if (currentShift === 'T' || currentShift === 'H') {
-                         roleForCell = cellData?.role || emp.defaultRole || ''; // Use scheduled or default
-                         hoursForCell = cellData?.baseHours || (emp.defaultShiftType && emp.defaultShiftType !== 'Nenhum' ? shiftTypeToHoursMap[emp.defaultShiftType] : ''); // Use scheduled or map default type
+                         roleForCell = cellData?.role || emp.defaultRole || ''; // Use scheduled role, fallback to employee default
+                          // Use scheduled hours, fallback to default based on employee's defaultShiftType
+                         hoursForCell = cellData?.baseHours || (emp.defaultShiftType && emp.defaultShiftType !== 'Nenhum' ? shiftTypeToHoursMap[emp.defaultShiftType] : '');
                      }
 
-                     // Get specific time options for this day
-                     const timeOptions = getTimeOptionsForDate(date);
-
                     return (
-                      <TableCell key={date.toISOString()} className="p-0 border w-24 min-w-[96px] h-14 relative">
+                      <TableCell key={date.toISOString()} className="p-0 border w-20 min-w-[80px] max-w-[80px] h-full relative"> {/* Ensure full height */}
+                         {/* Violation Indicator - Positioned at top-right */}
                          {hasViolation && (
                             <TooltipProvider delayDuration={100}>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
-                                        <div className="absolute top-0 right-0 p-0.5 z-10">
-                                            <AlertTriangle className="h-3 w-3 text-yellow-500" />
-                                        </div>
+                                        {/* Make the trigger clickable/focusable for accessibility */}
+                                        <button className="absolute top-0.5 right-0.5 p-0 z-10 text-yellow-500 hover:text-yellow-400 focus:outline-none focus:ring-1 focus:ring-yellow-600 rounded-full" aria-label="Violação de regra">
+                                            <AlertTriangle className="h-3 w-3" />
+                                        </button>
                                     </TooltipTrigger>
-                                    <TooltipContent className="text-xs p-1 bg-destructive text-destructive-foreground">
-                                        {violations.consecutiveDays && <p>Violação: +6 dias.</p>}
-                                        {violations.consecutiveSundays && <p>Violação: +3 domingos.</p>}
-                                        {violations.fixedDayOff && <p>Violação: Folga fixa.</p>}
+                                    <TooltipContent side="top" className="text-xs p-1 bg-destructive text-destructive-foreground">
+                                        {violations.consecutiveDays && <p>Violação: +6 dias trab.</p>}
+                                        {violations.consecutiveSundays && <p>Violação: +3 domingos trab.</p>}
+                                        {violations.fixedDayOff && <p>Violação: Trab. na folga fixa.</p>}
                                     </TooltipContent>
                                 </Tooltip>
                             </TooltipProvider>
                           )}
-                        <ShiftCell
-                          shift={currentShift}
-                          role={roleForCell}
-                          baseHours={hoursForCell}
-                          date={date}
-                          availableRoles={defaultAvailableRoles}
-                          availableTimes={timeOptions} // Pass specific time options for the day
-                          onChange={(newShift) => onShiftChange(emp.id, date, newShift)}
-                          onDetailChange={(field, value) => onDetailChange(emp.id, date, field, value)}
-                          hasViolation={hasViolation}
-                        />
+                          {/* Shift Cell Component */}
+                          <div className="w-full h-full"> {/* Wrapper to ensure ShiftCell fills the TableCell */}
+                              <ShiftCell
+                                shift={currentShift}
+                                role={roleForCell}
+                                baseHours={hoursForCell}
+                                date={date}
+                                availableRoles={defaultAvailableRoles} // Pass global roles
+                                // availableTimes is now handled internally by ShiftCell based on date
+                                onChange={(newShift) => onShiftChange(emp.id, date, newShift)}
+                                onDetailChange={(field, value) => onDetailChange(emp.id, date, field, value)}
+                                hasViolation={hasViolation}
+                              />
+                          </div>
                       </TableCell>
                     );
                   })}

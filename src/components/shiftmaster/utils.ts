@@ -1,8 +1,9 @@
 
+
 import { addDays, format, startOfDay, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import type { Employee, ScheduleData, ShiftCode, FilterState, DayOfWeek, ShiftType } from './types';
-import { shiftTypeToHoursMap, daysOfWeek, availableRoles, availableShiftTypes } from './types'; // Import maps and constants
+import type { Employee, ScheduleData, ShiftCode, FilterState, DayOfWeek, ShiftType, ScheduleEntry } from './types'; // Added ScheduleEntry
+import { shiftTypeToHoursMap, daysOfWeek, availableRoles, availableShiftTypes, roleToEmojiMap as defaultRoleToEmojiMap } from './types'; // Import maps and constants
 
 // Define type without 'store' for initial filters (already correct, just ensuring consistency)
 type InitialFilterState = FilterState; // Use the updated FilterState directly
@@ -129,38 +130,98 @@ export function generateInitialData(): {
 
 // Helper function to generate WhatsApp text for a specific date
 export function generateWhatsAppText(
-    date: Date, // Takes the specific date as input
+    date: Date,
     employees: Employee[],
-    schedule: ScheduleData
+    schedule: ScheduleData,
+    roleToEmojiMap: Record<string, string> = defaultRoleToEmojiMap // Use imported default map
 ): string {
     if (!date || isNaN(date.getTime())) {
         return "*Erro: Data inválida selecionada.*";
     }
-    const formattedDate = format(date, 'EEEE, dd/MM/yyyy', { locale: ptBR });
-    let text = `*Escala do Dia: ${formattedDate}*\n\n`;
-    let hasEntries = false;
+
+    // Capitalize the first letter of the day name
+    const dayName = format(date, 'EEEE', { locale: ptBR });
+    const capitalizedDayName = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+    const formattedDate = format(date, `dd 'de' MMMM`, { locale: ptBR }); // e.g., 07 de maio
+
+    let text = `📅 *Escala - ${capitalizedDayName}, ${formattedDate}*\n\n`;
+
+    // Group employees by shift type and then by role
+    const shifts: { [key in ShiftType | 'Especial']?: { [role: string]: ScheduleEntry & { name: string }[] } } = {};
+    let hasAnyWorkShift = false;
 
     employees.forEach(emp => {
         const key = getScheduleKey(emp.id, date);
         const entry = schedule[key];
 
-        if (entry && entry.shift === 'T') { // Only include employees working ('T')
-            text += `- *${emp.name}:* ${entry.role || 'N/A'} (${entry.baseHours || 'N/A'})\n`;
-            hasEntries = true;
-        } else if (entry && entry.shift === 'H') { // Also include special hours ('H')
-            text += `- *${emp.name}:* ${entry.role || 'N/A'} (${entry.baseHours || 'N/A'}) - *HORÁRIO ESPECIAL*\n`;
-            hasEntries = true;
+        if (entry && (entry.shift === 'T' || entry.shift === 'H')) {
+            hasAnyWorkShift = true;
+            const role = entry.role || 'Sem Função';
+            const hours = entry.baseHours || 'Sem Horário';
+
+            let shiftType: ShiftType | 'Especial' = 'Nenhum'; // Default
+
+            if (entry.shift === 'H') {
+                shiftType = 'Especial';
+            } else if (entry.shift === 'T') {
+                // Infer shift type from hours if possible (this is an approximation)
+                const lowerHours = hours.toLowerCase();
+                 if (lowerHours.includes('10h') || lowerHours.includes('11h')) shiftType = 'Abertura';
+                 else if (lowerHours.includes('12h') && !lowerHours.includes('22h')) shiftType = 'Intermediário'; // Avoid 12h-22h being Intermediário
+                 else if (lowerHours.includes('13h') || lowerHours.includes('14h') || lowerHours.includes('15h') || lowerHours.includes('21h') || lowerHours.includes('22h')) shiftType = 'Fechamento';
+                 // If none match, keep 'Nenhum' or handle as 'Outro'/'T'
+            }
+
+
+             // Initialize shift type group if it doesn't exist
+            if (!shifts[shiftType]) {
+                shifts[shiftType] = {};
+            }
+            // Initialize role group within the shift type if it doesn't exist
+            if (!shifts[shiftType]![role]) {
+                shifts[shiftType]![role] = [];
+            }
+
+            // Add employee to the group
+            shifts[shiftType]![role].push({ ...entry, name: emp.name });
         }
-         // Optionally include Folga ('F')
-         // else if (entry && entry.shift === 'F') {
-         //     text += `- *${emp.name}:* Folga\n`;
-         //     hasEntries = true;
-         // }
     });
 
-    if (!hasEntries) {
-        text += "Ninguém escalado para trabalho neste dia.";
+    // Define the order of shifts for display
+    const shiftOrder: (ShiftType | 'Especial')[] = ['Abertura', 'Intermediário', 'Fechamento', 'Especial'];
+
+    // Build the text string section by section
+    shiftOrder.forEach(shiftType => {
+        const roles = shifts[shiftType];
+        if (roles && Object.keys(roles).length > 0) {
+            // Add shift type header (only if it's not 'Nenhum' and has entries)
+            if (shiftType !== 'Nenhum') {
+                 // Determine representative hours for the section header (optional, maybe take the first employee's hours)
+                 const firstRole = Object.keys(roles)[0];
+                 const firstEntry = roles[firstRole]?.[0];
+                 const headerHours = firstEntry?.baseHours ? `(${firstEntry.baseHours})` : ''; // Example: (10h às 18h)
+
+                 // Add header: ⏰ Abertura (10h às 18h) or ✨ Horário Especial
+                 const headerEmoji = shiftType === 'Especial' ? '✨' : '⏰';
+                 const headerName = shiftType === 'Especial' ? 'Horário Especial' : shiftType;
+                text += `${headerEmoji} *${headerName}* ${headerHours}\n`;
+            }
+
+            // Add employees grouped by role within the shift type
+            Object.keys(roles).sort().forEach(role => { // Sort roles alphabetically
+                const emoji = roleToEmojiMap[role] || '⚪'; // Get emoji or default
+                roles[role].forEach(empEntry => {
+                    text += `${emoji} ${role} - ${empEntry.name} - ${empEntry.baseHours || 'N/A'}\n`;
+                });
+            });
+            text += '\n'; // Add space between shift sections
+        }
+    });
+
+    if (!hasAnyWorkShift) {
+        text += "_Ninguém escalado para trabalho neste dia._";
     }
 
-    return text;
+    return text.trim(); // Remove trailing newline
 }
+```
