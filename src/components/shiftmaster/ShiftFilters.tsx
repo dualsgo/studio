@@ -14,11 +14,11 @@ import { Calendar as CalendarIcon, Search, FilterX } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Import Card components
 
 interface ShiftFiltersProps {
-  filters: FilterState;
+  filters: Omit<FilterState, 'store'>; // Store filter removed
   employees: Employee[];
   roles: string[];
-  stores: string[];
-  onFilterChange: (newFilters: Partial<FilterState>) => void;
+  // stores prop removed
+  onFilterChange: (newFilters: Partial<Omit<FilterState, 'store'>>) => void;
   onClearFilters: () => void;
 }
 
@@ -29,12 +29,12 @@ export function ShiftFilters({
   filters,
   employees,
   roles,
-  stores,
+  // stores prop removed
   onFilterChange,
   onClearFilters,
 }: ShiftFiltersProps) {
 
-  const handleSelectChange = (name: keyof FilterState) => (value: string) => {
+  const handleSelectChange = (name: keyof Omit<FilterState, 'store'>) => (value: string) => {
     // Map the special "all" value back to an empty string for the state
     const actualValue = value === ALL_VALUE ? '' : value;
     onFilterChange({ [name]: actualValue });
@@ -55,22 +55,9 @@ export function ShiftFilters({
         <CardTitle className="text-lg text-primary">Filtros</CardTitle>
       </CardHeader>
       <CardContent className="p-2">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 items-end">
-            {/* Store Filter */}
-            <div className="space-y-1">
-              <Label htmlFor="store-filter">Loja</Label>
-              <Select value={filters.store || ALL_VALUE} onValueChange={handleSelectChange('store')}>
-                <SelectTrigger id="store-filter">
-                  <SelectValue placeholder="Selecione a Loja" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_VALUE}>Todas</SelectItem>
-                  {stores.map(store => (
-                    <SelectItem key={store} value={store}>{store}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Adjusted grid columns */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 items-end">
+            {/* Store Filter Removed */}
 
             {/* Employee Filter */}
             <div className="space-y-1">

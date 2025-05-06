@@ -3,7 +3,7 @@ export interface Employee {
   name: string;
   baseRole: string;
   baseHours: string;
-  store: string; // Added store property
+  // store property removed
   fixedDayOff?: "Domingo" | "Segunda" | "Terça" | "Quarta" | "Quinta" | "Sexta" | "Sábado"; // Optional fixed day off
 }
 
@@ -19,7 +19,7 @@ export interface ScheduleEntry {
 export type ScheduleData = Record<string, ScheduleEntry>;
 
 export interface FilterState {
-  store: string;
+  // store property removed
   employee: string; // Store employee ID as string for select compatibility
   role: string;
   startDate: Date;

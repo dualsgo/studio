@@ -11,11 +11,16 @@ import { isAfter, isBefore, parseISO, differenceInDays, addDays } from 'date-fns
 
 const STORAGE_KEY = 'shiftMasterSchedule';
 
+// Define types without the 'store' property for filters
+type AppFilterState = Omit<FilterState, 'store'>;
+type AppPartialFilterState = Partial<AppFilterState>;
+
+
 export function ShiftMasterApp() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [schedule, setSchedule] = useState<ScheduleData>({});
-  const [filters, setFilters] = useState<FilterState>({
-    store: '',
+  const [filters, setFilters] = useState<AppFilterState>({
+    // store property removed
     employee: '',
     role: '',
     startDate: new Date(),
@@ -35,10 +40,12 @@ export function ShiftMasterApp() {
           setEmployees(parsedData.employees);
           // Convert date strings back to Date objects for filters
           if (parsedData.filters && parsedData.filters.startDate && parsedData.filters.endDate) {
+             // Load filters, ensuring 'store' is ignored if present in old data
+            const { store, ...loadedFilters } = parsedData.filters;
             setFilters({
-              ...parsedData.filters,
-              startDate: parseISO(parsedData.filters.startDate),
-              endDate: parseISO(parsedData.filters.endDate),
+              ...loadedFilters,
+              startDate: parseISO(loadedFilters.startDate),
+              endDate: parseISO(loadedFilters.endDate),
             });
           } else {
              // Set default dates if not found in storage
@@ -63,7 +70,7 @@ export function ShiftMasterApp() {
     const { initialEmployees, initialSchedule, initialFilters } = generateInitialData();
     setEmployees(initialEmployees);
     setSchedule(initialSchedule);
-    setFilters(initialFilters);
+    setFilters(initialFilters); // initialFilters from generateInitialData no longer has 'store'
     saveToLocalStorage(initialEmployees, initialSchedule, initialFilters);
   };
 
@@ -74,7 +81,7 @@ export function ShiftMasterApp() {
     }
   }, [employees, schedule, filters, isClient]);
 
-  const saveToLocalStorage = (emps: Employee[], sched: ScheduleData, filt: FilterState) => {
+  const saveToLocalStorage = (emps: Employee[], sched: ScheduleData, filt: AppFilterState) => {
     if (!isClient) return;
     try {
       const dataToStore = JSON.stringify({ employees: emps, schedule: sched, filters: filt });
@@ -86,7 +93,7 @@ export function ShiftMasterApp() {
   };
 
 
-  const handleFilterChange = useCallback((newFilters: Partial<FilterState>) => {
+  const handleFilterChange = useCallback((newFilters: AppPartialFilterState) => {
     setFilters(prev => {
       const updatedFilters = { ...prev, ...newFilters };
       // Ensure endDate is not before startDate
@@ -101,7 +108,7 @@ export function ShiftMasterApp() {
   const handleClearFilters = useCallback(() => {
     const today = new Date();
     setFilters({
-      store: '',
+      // store property removed
       employee: '',
       role: '',
       startDate: today,
@@ -307,11 +314,11 @@ export function ShiftMasterApp() {
  const filteredEmployees = React.useMemo(() => {
    if (!isClient) return []; // Return empty array during SSR or before client mount
 
-   const { store, employee: employeeFilter, role: roleFilter, startDate, endDate } = filters;
+   const { employee: employeeFilter, role: roleFilter, startDate, endDate } = filters; // Store removed from filters
 
    return employees.filter(emp => {
      // Basic filters (if applied)
-     if (store && emp.store !== store) return false;
+     // Store filter removed
      if (employeeFilter && emp.id !== parseInt(employeeFilter)) return false; // Assuming employee filter uses ID
      // Role filter needs to check baseRole OR if they have that role scheduled in the period
      // Base role check:
@@ -342,9 +349,8 @@ export function ShiftMasterApp() {
      }
 
 
-     // Final decision: must match store/employee if filtered, must match role (base or scheduled), AND must be scheduled in the period
-     return (!store || emp.store === store) &&
-            (!employeeFilter || emp.id === parseInt(employeeFilter)) &&
+     // Final decision: must match employee if filtered, must match role (base or scheduled), AND must be scheduled in the period
+     return (!employeeFilter || emp.id === parseInt(employeeFilter)) && // Store removed
             (!roleFilter || roleMatch) &&
             isScheduledInPeriod;
    });
@@ -364,7 +370,7 @@ export function ShiftMasterApp() {
          filters={filters}
          employees={employees}
          roles={['Caixa', 'Vendas', 'Estoque', 'Fiscal', 'Pacote', 'Organização']} // Define available roles
-         stores={['Loja A', 'Loja B', 'Loja C']} // Example stores
+         // stores prop removed
          onFilterChange={handleFilterChange}
          onClearFilters={handleClearFilters}
       />

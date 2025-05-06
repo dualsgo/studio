@@ -1,6 +1,9 @@
 import { addDays, format, startOfDay } from 'date-fns';
 import type { Employee, ScheduleData, ShiftCode, FilterState } from './types';
 
+// Define type without 'store' for initial filters
+type InitialFilterState = Omit<FilterState, 'store'>;
+
 // Function to generate a range of dates
 export function getDatesInRange(startDate: Date, endDate: Date): Date[] {
   const dates: Date[] = [];
@@ -48,23 +51,24 @@ export function getScheduleKey(employeeId: number, date: Date): string {
 export function generateInitialData(): {
   initialEmployees: Employee[];
   initialSchedule: ScheduleData;
-  initialFilters: FilterState;
+  initialFilters: InitialFilterState; // Use the type without 'store'
 } {
   const initialEmployees: Employee[] = [
-    { id: 1, name: 'Alice Silva', baseRole: 'Vendas', baseHours: '10h–18h', store: 'Loja A', fixedDayOff: 'Segunda' },
-    { id: 2, name: 'Bruno Costa', baseRole: 'Caixa', baseHours: '12h–20h', store: 'Loja A' },
-    { id: 3, name: 'Carla Dias', baseRole: 'Estoque', baseHours: '14h–22h', store: 'Loja B', fixedDayOff: 'Quarta' },
-    { id: 4, name: 'Daniel Souza', baseRole: 'Fiscal', baseHours: '10h–18h', store: 'Loja A' },
-    { id: 5, name: 'Eduarda Lima', baseRole: 'Pacote', baseHours: '12h–20h', store: 'Loja C' },
-    { id: 6, name: 'Fábio Mendes', baseRole: 'Organização', baseHours: '14h–22h', store: 'Loja B' },
-    { id: 7, name: 'Gabriela Rocha', baseRole: 'Vendas', baseHours: '10h–18h', store: 'Loja C', fixedDayOff: 'Domingo' },
-    { id: 8, name: 'Hugo Pereira', baseRole: 'Caixa', baseHours: '12h–20h', store: 'Loja A' },
+    // Store property removed from employee definitions
+    { id: 1, name: 'Alice Silva', baseRole: 'Vendas', baseHours: '10h–18h', fixedDayOff: 'Segunda' },
+    { id: 2, name: 'Bruno Costa', baseRole: 'Caixa', baseHours: '12h–20h' },
+    { id: 3, name: 'Carla Dias', baseRole: 'Estoque', baseHours: '14h–22h', fixedDayOff: 'Quarta' },
+    { id: 4, name: 'Daniel Souza', baseRole: 'Fiscal', baseHours: '10h–18h' },
+    { id: 5, name: 'Eduarda Lima', baseRole: 'Pacote', baseHours: '12h–20h' },
+    { id: 6, name: 'Fábio Mendes', baseRole: 'Organização', baseHours: '14h–22h' },
+    { id: 7, name: 'Gabriela Rocha', baseRole: 'Vendas', baseHours: '10h–18h', fixedDayOff: 'Domingo' },
+    { id: 8, name: 'Hugo Pereira', baseRole: 'Caixa', baseHours: '12h–20h' },
   ];
 
   const initialSchedule: ScheduleData = {};
   const today = new Date();
-  const initialFilters: FilterState = {
-      store: '',
+  const initialFilters: InitialFilterState = {
+      // store property removed
       employee: '',
       role: '',
       startDate: today,
