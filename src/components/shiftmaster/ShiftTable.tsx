@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { AlertTriangle, Edit, Trash2, CalendarHeart } from 'lucide-react'; // Added CalendarHeart for holiday toggle
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from '@/components/ui/button';
-import { shiftCodeToDescription } from './types'; // Import shiftCodeToDescription
+import { shiftCodeToDescription, availableRoles } from './types'; // Import shiftCodeToDescription and availableRoles
 import { cn } from '@/lib/utils'; // Import cn
 
 interface ShiftTableProps {
@@ -246,7 +246,7 @@ export function ShiftTable({
                                 baseHours={scheduleEntry.baseHours}
                                 holidayReason={scheduleEntry.holidayReason} // Pass reason
                                 date={date}
-                                availableRoles={defaultAvailableRoles}
+                                availableRoles={availableRoles} // Use the imported availableRoles
                                 isHoliday={holidayStatus} // Pass day's holiday status
                                 onChange={(newShift) => onShiftChange(emp.id, date, newShift)}
                                 onDetailChange={(field, value) => onDetailChange(emp.id, date, field, value)}
