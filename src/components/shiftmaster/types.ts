@@ -1,9 +1,8 @@
+
 export interface Employee {
   id: number;
   name: string;
-  baseRole: string;
-  baseHours: string;
-  // store property removed
+  // baseRole and baseHours removed
   fixedDayOff?: "Domingo" | "Segunda" | "Terça" | "Quarta" | "Quinta" | "Sexta" | "Sábado"; // Optional fixed day off
 }
 
@@ -11,15 +10,14 @@ export type ShiftCode = 'T' | 'F' | 'H' | 'D'; // Trabalha, Folga, Horário Espe
 
 export interface ScheduleEntry {
   shift: ShiftCode;
-  role: string;
-  baseHours: string;
+  role: string; // Role is now mandatory within the entry if shift is T/H
+  baseHours: string; // BaseHours is now mandatory within the entry if shift is T/H
 }
 
 // Schedule data stored as a map: key = "empId-YYYY-MM-DD", value = ScheduleEntry
 export type ScheduleData = Record<string, ScheduleEntry>;
 
 export interface FilterState {
-  // store property removed
   employee: string; // Store employee ID as string for select compatibility
   role: string;
   startDate: Date;

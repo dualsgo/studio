@@ -1,3 +1,4 @@
+
 import { addDays, format, startOfDay } from 'date-fns';
 import type { Employee, ScheduleData, ShiftCode, FilterState } from './types';
 
@@ -54,21 +55,20 @@ export function generateInitialData(): {
   initialFilters: InitialFilterState; // Use the type without 'store'
 } {
   const initialEmployees: Employee[] = [
-    // Store property removed from employee definitions
-    { id: 1, name: 'Alice Silva', baseRole: 'Vendas', baseHours: '10h–18h', fixedDayOff: 'Segunda' },
-    { id: 2, name: 'Bruno Costa', baseRole: 'Caixa', baseHours: '12h–20h' },
-    { id: 3, name: 'Carla Dias', baseRole: 'Estoque', baseHours: '14h–22h', fixedDayOff: 'Quarta' },
-    { id: 4, name: 'Daniel Souza', baseRole: 'Fiscal', baseHours: '10h–18h' },
-    { id: 5, name: 'Eduarda Lima', baseRole: 'Pacote', baseHours: '12h–20h' },
-    { id: 6, name: 'Fábio Mendes', baseRole: 'Organização', baseHours: '14h–22h' },
-    { id: 7, name: 'Gabriela Rocha', baseRole: 'Vendas', baseHours: '10h–18h', fixedDayOff: 'Domingo' },
-    { id: 8, name: 'Hugo Pereira', baseRole: 'Caixa', baseHours: '12h–20h' },
+    // Base Role and Base Hours properties removed
+    { id: 1, name: 'Alice Silva', fixedDayOff: 'Segunda' },
+    { id: 2, name: 'Bruno Costa' },
+    { id: 3, name: 'Carla Dias', fixedDayOff: 'Quarta' },
+    { id: 4, name: 'Daniel Souza' },
+    { id: 5, name: 'Eduarda Lima' },
+    { id: 6, name: 'Fábio Mendes' },
+    { id: 7, name: 'Gabriela Rocha', fixedDayOff: 'Domingo' },
+    { id: 8, name: 'Hugo Pereira' },
   ];
 
   const initialSchedule: ScheduleData = {};
   const today = new Date();
   const initialFilters: InitialFilterState = {
-      // store property removed
       employee: '',
       role: '',
       startDate: today,
@@ -86,21 +86,27 @@ export function generateInitialData(): {
       const fixedDayMapping: { [key: string]: number } = { "Domingo": 0, "Segunda": 1, "Terça": 2, "Quarta": 3, "Quinta": 4, "Sexta": 5, "Sábado": 6 };
       const fixedDayNum = fixedDayMapping[emp.fixedDayOff || ""];
       let shift: ShiftCode = 'D'; // Default to Disponible
+      let role = ''; // Default empty role
+      let baseHours = ''; // Default empty hours
 
        if (fixedDayNum !== undefined && dayOfWeek === fixedDayNum) {
            shift = 'F'; // Assign Folga on fixed day off
        } else if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Example: Work weekdays
             shift = 'T';
+            // Assign a default role/hour for initial 'T' shifts or leave empty
+            // Example: Assign first available role and time
+            // role = 'Vendas';
+            // baseHours = '10h–18h';
        } else {
             shift = 'F'; // Example: Off weekends
        }
 
 
-      // Assign initial shift respecting fixed day off
+      // Assign initial schedule entry
        initialSchedule[key] = {
          shift: shift,
-         role: emp.baseRole,
-         baseHours: emp.baseHours,
+         role: role, // Assign determined role
+         baseHours: baseHours, // Assign determined hours
        };
     }
   });
