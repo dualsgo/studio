@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -34,7 +33,7 @@ declare module 'jspdf' {
   }
 }
 
-const STORAGE_KEY = 'shiftMasterSchedule_v2'; // Use a new key if structure changes significantly
+const STORAGE_KEY = 'shiftMasterSchedule_v3'; // Increment version for FF changes
 
 type AppFilterState = FilterState;
 type AppPartialFilterState = Partial<AppFilterState>;
@@ -49,7 +48,7 @@ export function ShiftMasterApp() {
     role: '',
     selectedDate: new Date(),
   });
-  const [holidays, setHolidays] = useState<Date[]>([]); // State for holidays
+  const [holidays, setHolidays] = useState<Date[]>([]); // State for holidays (actual calendar holidays)
   const [isClient, setIsClient] = useState(false);
   const { toast } = useToast();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -60,9 +59,8 @@ export function ShiftMasterApp() {
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
   // --- Holiday Management ---
-   // IMPORTANT: Define isHoliday *before* it's used in other useCallback hooks below
    const isHoliday = useCallback((date: Date): boolean => {
-       if (!date || isNaN(date.getTime())) return false; // Basic date validation
+       if (!date || isNaN(date.getTime())) return false;
        const startOfDate = startOfDay(date);
        return holidays.some(holiday => isEqual(startOfDay(holiday), startOfDate));
    }, [holidays]);
@@ -84,9 +82,22 @@ export function ShiftMasterApp() {
             role: loadedFilters.role || '',
             selectedDate: loadedFilters.selectedDate ? parseISO(loadedFilters.selectedDate) : new Date(),
           });
-          setHolidays((parsedData.holidays || []).map((d: string) => parseISO(d))); // Load holidays
+          setHolidays((parsedData.holidays || []).map((d: string) => parseISO(d)));
           setCurrentMonth(startOfMonth(loadedFilters.selectedDate ? parseISO(loadedFilters.selectedDate) : new Date()));
-          setSchedule(parsedData.schedule);
+          // Ensure schedule entries have the new holidayReason field (default to undefined)
+          const validatedSchedule: ScheduleData = {};
+          for (const key in parsedData.schedule) {
+              if (Object.prototype.hasOwnProperty.call(parsedData.schedule, key)) {
+                  const entry = parsedData.schedule[key] as ScheduleEntry;
+                  validatedSchedule[key] = {
+                      shift: entry.shift,
+                      role: entry.role ?? '', // Ensure exists
+                      baseHours: entry.baseHours ?? '', // Ensure exists
+                      holidayReason: entry.holidayReason // Will be undefined if loaded from older version
+                  };
+              }
+          }
+          setSchedule(validatedSchedule);
           loadedSuccessfully = true;
         }
       } catch (error) {
@@ -106,17 +117,17 @@ export function ShiftMasterApp() {
     setEmployees(initialEmployees);
     setSchedule(initialSchedule);
     setFilters(initialFilters);
-    setHolidays(initialHolidays); // Set initial holidays
+    setHolidays(initialHolidays);
     setCurrentMonth(startOfMonth(initialFilters.selectedDate));
   }, []); // Empty dependency array ensures it runs only once
 
   // Save data to localStorage whenever it changes
   useEffect(() => {
     if (isClient && employees.length > 0) {
-      saveToLocalStorage(employees, schedule, filters, holidays); // Include holidays in save
+      saveToLocalStorage(employees, schedule, filters, holidays);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employees, schedule, filters, holidays, isClient]); // Add holidays and isClient dependency
+  }, [employees, schedule, filters, holidays, isClient]);
 
    const saveToLocalStorage = (emps: Employee[], sched: ScheduleData, filt: AppFilterState, hols: Date[]) => {
     try {
@@ -124,7 +135,7 @@ export function ShiftMasterApp() {
         ...filt,
         selectedDate: filt.selectedDate?.toISOString(),
       };
-      const holidaysToStore = hols.map(d => d.toISOString()); // Store holidays as ISO strings
+      const holidaysToStore = hols.map(d => d.toISOString());
       const dataToStore = JSON.stringify({ employees: emps, schedule: sched, filters: filtersToStore, holidays: holidaysToStore });
       localStorage.setItem(STORAGE_KEY, dataToStore);
     } catch (error) {
@@ -134,7 +145,6 @@ export function ShiftMasterApp() {
   };
 
   // --- Holiday Management ---
-
 
    const handleToggleHoliday = useCallback((date: Date) => {
        const dateStart = startOfDay(date);
@@ -150,8 +160,38 @@ export function ShiftMasterApp() {
            }
        });
 
+        // Update schedule entries for all employees on this date if holiday status changes
+        // Specifically, update available time options if they were defaulted based on holiday status
+        const newIsHolidayStatus = !wasHoliday;
+        setSchedule(prevSched => {
+            const newSchedule = {...prevSched};
+            employees.forEach(emp => {
+                const key = getScheduleKey(emp.id, date);
+                const entry = newSchedule[key];
+                // If the employee is working ('T') and might need time adjustment
+                if(entry && entry.shift === 'T') {
+                    const availableTimes = getTimeOptionsForDate(date, newIsHolidayStatus);
+                    // If the current time is no longer valid, reset it (e.g., pick first valid)
+                    if (!availableTimes.includes(entry.baseHours)) {
+                        // Attempt to get default for the *new* day status
+                        const defaultShiftType = emp.defaultShiftType;
+                        let newDefaultHour = availableTimes[0] || ''; // Fallback to first available
+                        if (defaultShiftType && defaultShiftType !== 'Nenhum') {
+                             const basicDefault = shiftTypeToHoursMap[defaultShiftType];
+                             if(availableTimes.includes(basicDefault)) {
+                                 newDefaultHour = basicDefault;
+                             }
+                        }
+                        newSchedule[key] = { ...entry, baseHours: newDefaultHour };
+                    }
+                }
+            });
+            return newSchedule;
+        });
+
+
        toast({ title: "Feriado Atualizado", description: `Dia ${format(date, 'dd/MM')} ${wasHoliday ? 'não é mais' : 'agora é'} feriado.` });
-   }, [holidays, toast, isHoliday]); // isHoliday dependency is now valid
+   }, [holidays, toast, isHoliday, employees]);
 
 
   // --- Filter Handlers ---
@@ -216,10 +256,10 @@ export function ShiftMasterApp() {
       });
 
       // Update Schedule based on Fixed Day Off change
-      if (!isNewEmployee && oldEmployeeData && oldEmployeeData.fixedDayOff !== employeeData.fixedDayOff) {
+      if ((!isNewEmployee && oldEmployeeData && oldEmployeeData.fixedDayOff !== employeeData.fixedDayOff) || isNewEmployee) {
           const employeeId = employeeData.id;
           const newFixedDayOff = employeeData.fixedDayOff;
-          const oldFixedDayOff = oldEmployeeData.fixedDayOff;
+          const oldFixedDayOff = oldEmployeeData?.fixedDayOff;
           const fixedDayMapping: { [key in DayOfWeek]?: number } = {};
           daysOfWeek.forEach((day, index) => fixedDayMapping[day] = index);
           const newFixedDayNum = newFixedDayOff ? fixedDayMapping[newFixedDayOff] : undefined;
@@ -227,6 +267,7 @@ export function ShiftMasterApp() {
 
           setSchedule(prevSchedule => {
               const newSchedule = { ...prevSchedule };
+              // Consider a wider range or multiple months if needed, but start with current view
               const monthStart = startOfMonth(currentMonth);
               const monthEnd = endOfMonth(currentMonth);
               const datesForMonth = getDatesInRange(monthStart, monthEnd);
@@ -236,32 +277,45 @@ export function ShiftMasterApp() {
                    try {
                      if (isNaN(date.getTime())) return;
                      const dayOfWeek = date.getDay();
-                     const currentEntry = newSchedule[key] || { shift: 'F', role: '', baseHours: '' }; // Default to F
+                     const currentEntry = newSchedule[key]; // Could be undefined if new employee
+                     const dayIsHoliday = isHoliday(date); // Use isHoliday here
 
-                     // Apply new fixed day off
+                     // Apply new fixed day off (sets to 'F', clears details)
                      if (newFixedDayNum !== undefined && dayOfWeek === newFixedDayNum) {
                          // Only change if it wasn't already a Folga Feriado (FF)
-                         if (currentEntry.shift !== 'FF') {
-                           newSchedule[key] = { ...currentEntry, shift: 'F', role: '', baseHours: '' };
+                         // And only if the current shift is not FF (don't override FF with regular F)
+                         if (!currentEntry || currentEntry.shift !== 'FF') {
+                           newSchedule[key] = { shift: 'F', role: '', baseHours: '', holidayReason: undefined };
                          }
                      }
-                     // If it *was* the old fixed day off, reset it (unless it's the *new* fixed day off or a holiday folga)
-                     else if (oldFixedDayNum !== undefined && dayOfWeek === oldFixedDayNum && newFixedDayNum !== dayOfWeek && currentEntry.shift === 'F') {
-                          // Reset based on defaults if available
-                         let resetShift: ShiftCode = 'F'; // Default reset is Folga
+                     // If it *was* the old fixed day off, reset it (unless it's the *new* fixed day off or a FF)
+                     else if (oldFixedDayNum !== undefined && dayOfWeek === oldFixedDayNum && newFixedDayNum !== dayOfWeek && currentEntry?.shift === 'F') {
+                         // Reset based on defaults if available, otherwise F
+                         let resetShift: ShiftCode = 'F';
                          let resetRole = '';
                          let resetHours = '';
                           if (employeeData.defaultRole && employeeData.defaultShiftType && employeeData.defaultShiftType !== 'Nenhum') {
                               resetShift = 'T';
                               resetRole = employeeData.defaultRole;
                               // Get default hours, considering if the day is a holiday
-                              const dayIsHoliday = isHoliday(date); // Use isHoliday here
                               const defaultHoursOptions = getTimeOptionsForDate(date, dayIsHoliday);
-                              // We might need a more sophisticated way to get the *correct* default hours here
-                              const basicDefault = shiftTypeToHoursMap[employeeData.defaultShiftType] || '';
+                              const basicDefault = shiftTypeToHoursMap[employeeData.defaultShiftType];
                               resetHours = defaultHoursOptions.includes(basicDefault) ? basicDefault : (defaultHoursOptions[0] || '');
                           }
-                         newSchedule[key] = { ...currentEntry, shift: resetShift, role: resetRole, baseHours: resetHours };
+                         newSchedule[key] = { ...currentEntry, shift: resetShift, role: resetRole, baseHours: resetHours, holidayReason: undefined };
+                     } else if (isNewEmployee && !currentEntry) {
+                         // If it's a new employee and not a fixed day off, set defaults
+                          let initialShift: ShiftCode = 'F';
+                          let initialRole = '';
+                          let initialHours = '';
+                          if (employeeData.defaultRole && employeeData.defaultShiftType && employeeData.defaultShiftType !== 'Nenhum') {
+                                initialShift = 'T';
+                                initialRole = employeeData.defaultRole;
+                                const defaultHoursOptions = getTimeOptionsForDate(date, dayIsHoliday);
+                                const basicDefault = shiftTypeToHoursMap[employeeData.defaultShiftType] || '';
+                                initialHours = defaultHoursOptions.includes(basicDefault) ? basicDefault : (defaultHoursOptions[0] || '');
+                          }
+                          newSchedule[key] = { shift: initialShift, role: initialRole, baseHours: initialHours, holidayReason: undefined };
                      }
                   } catch (e) {
                       console.error(`Error processing schedule key for fixed day update: ${key}`, e);
@@ -271,10 +325,11 @@ export function ShiftMasterApp() {
           });
       }
 
+
       setIsEditDialogOpen(false);
       setEditingEmployee(null);
       toast({ title: "Sucesso", description: `Colaborador ${isNewEmployee ? 'adicionado' : 'atualizado'}.` });
-  }, [toast, currentMonth, isHoliday]); // isHoliday dependency is now valid
+  }, [toast, currentMonth, isHoliday]);
 
 
   // --- Schedule Management Handlers ---
@@ -293,146 +348,151 @@ export function ShiftMasterApp() {
     const employee = employees.find(e => e.id === empId);
     if (!employee) return;
 
-     // Check if trying to set 'T' on a fixed day off
-     if (newShift === 'T' && checkFixedDayOff(employee, date)) {
-         toast({
-             title: "Regra Violada",
-             description: `${employee.name} tem folga fixa neste dia (${employee.fixedDayOff}). Use 'FF' para Folga Feriado se aplicável.`,
-             variant: "destructive",
-         });
-         return;
-     }
+     // --- Rule Checks ---
+     if (newShift === 'T') {
+         // Check if trying to set 'T' on a fixed day off
+         if (checkFixedDayOff(employee, date)) {
+             toast({
+                 title: "Regra Violada",
+                 description: `${employee.name} tem folga fixa neste dia (${employee.fixedDayOff}). Use 'FF' para Folga Feriado.`,
+                 variant: "destructive",
+             });
+             return; // Prevent change
+         }
 
-     // Check if trying to set 'T' on a Holiday without special hours logic (or if needed)
-     // Currently, holiday time options are handled in ShiftCell, but you might add rules here.
-     // if (newShift === 'T' && isHoliday(date)) { /* Add specific holiday rules if needed */ }
-
-    // --- Consecutive Work Rules ---
-    if (newShift === 'T') {
-        // Create a temporary schedule to check rules *before* applying the change
-        const tempSchedule = { ...schedule };
-        const key = getScheduleKey(empId, date);
-        const existingEntry = schedule[key];
-
-        const role = existingEntry?.role || employee.defaultRole || '';
-        const defaultHours = employee.defaultShiftType && employee.defaultShiftType !== 'Nenhum'
-                           ? shiftTypeToHoursMap[employee.defaultShiftType] // Direct import from types.ts is safe here
-                           : '';
-        const baseHours = existingEntry?.baseHours || defaultHours;
-
-        tempSchedule[key] = { shift: newShift, role: role, baseHours: baseHours };
-
-        // Check consecutive days
-        let consecutiveDays = 0;
-        for (let i = 0; i < 7; i++) {
+         // Check consecutive work days rule
+        let consecutiveDays = 1; // Start with 1 for the current day being set to 'T'
+        for (let i = 1; i <= 6; i++) { // Check previous 6 days
             const checkDate = addDays(date, -i);
             const checkKey = getScheduleKey(empId, checkDate);
-            const dayShift = (i === 0) ? tempSchedule[checkKey]?.shift : schedule[checkKey]?.shift;
-             if (dayShift === 'T') {
-                 consecutiveDays++;
-             } else if (i > 0 && dayShift !== 'T') {
-                  break;
-             }
+            if (schedule[checkKey]?.shift === 'T') {
+                consecutiveDays++;
+            } else {
+                 break; // Stop counting if a non-T day is found
+            }
         }
-
-         if (consecutiveDays > 6) {
+        if (consecutiveDays > 6) {
             toast({
                 title: "Regra Violada",
                 description: `${employee.name} não pode trabalhar mais de 6 dias consecutivos.`,
                 variant: "destructive",
             });
-            return;
+            return; // Prevent change
         }
 
-        // Check consecutive Sundays
-         if (date.getDay() === 0) {
-             let previousConsecutiveSundays = 0;
-             for (let k = 1; k <= 3; k++) {
+         // Check consecutive Sundays rule
+         if (date.getDay() === 0) { // If the day being set to 'T' is a Sunday
+             let consecutiveSundays = 1; // Start with 1 for the current Sunday
+             for (let k = 1; k <= 3; k++) { // Check previous 3 Sundays
                  const prevSunday = addDays(date, -k * 7);
                  const prevKey = getScheduleKey(empId, prevSunday);
                  if (schedule[prevKey]?.shift === 'T') {
-                     previousConsecutiveSundays++;
+                     consecutiveSundays++;
                  } else {
-                      break;
+                      break; // Stop if a previous Sunday wasn't 'T'
                  }
              }
-             if (previousConsecutiveSundays >= 3) {
+             if (consecutiveSundays > 3) {
                  toast({
                      title: "Regra Violada",
                      description: `${employee.name} não pode trabalhar mais de 3 domingos consecutivos.`,
                      variant: "destructive",
                  });
-                 return;
+                 return; // Prevent change
              }
          }
-    }
+     }
 
     // --- Update Schedule ---
     setSchedule(prev => {
       const key = getScheduleKey(empId, date);
-      const existingEntry = prev[key];
-      let role = '';
-      let baseHours = '';
+      const existingEntry = prev[key] || { shift: 'F', role: '', baseHours: '', holidayReason: undefined };
+      let role = existingEntry.role;
+      let baseHours = existingEntry.baseHours;
+      let holidayReason = existingEntry.holidayReason;
 
-      // Keep/set role/hours only if the new shift is T
+      // Logic based on the NEW shift code
       if (newShift === 'T') {
-        role = existingEntry?.role || employee.defaultRole || '';
-        const defaultShiftType = employee.defaultShiftType;
-        const dayIsHoliday = isHoliday(date); // Use isHoliday here
-        const defaultHoursOptions = defaultShiftType && defaultShiftType !== 'Nenhum'
-                                    ? getTimeOptionsForDate(date, dayIsHoliday) // Get options based on day/holiday
-                                    : [];
-        // Try to find a matching default hour, or use the first option, or keep existing
-        let determinedDefaultHours = existingEntry?.baseHours || '';
-        if (!determinedDefaultHours && defaultHoursOptions.length > 0) {
-            // Basic logic: try to match shiftTypeToHoursMap or take the first option
-            const basicDefault = shiftTypeToHoursMap[defaultShiftType || 'Nenhum'];
-            if (defaultHoursOptions.includes(basicDefault)) {
-                determinedDefaultHours = basicDefault;
-            } else {
-                 determinedDefaultHours = defaultHoursOptions[0]; // Fallback to first option
-            }
+        role = existingEntry.role || employee.defaultRole || '';
+        const dayIsHoliday = isHoliday(date);
+        const defaultHoursOptions = getTimeOptionsForDate(date, dayIsHoliday);
+        let determinedDefaultHours = existingEntry.baseHours || '';
+
+        // If baseHours are empty or invalid for the day, try setting defaults
+        if (!determinedDefaultHours || !defaultHoursOptions.includes(determinedDefaultHours)) {
+             const defaultShiftType = employee.defaultShiftType;
+             if (defaultShiftType && defaultShiftType !== 'Nenhum') {
+                 const basicDefault = shiftTypeToHoursMap[defaultShiftType];
+                 if (defaultHoursOptions.includes(basicDefault)) {
+                    determinedDefaultHours = basicDefault;
+                 } else if (defaultHoursOptions.length > 0) {
+                    determinedDefaultHours = defaultHoursOptions[0]; // Fallback to first option
+                 } else {
+                    determinedDefaultHours = ''; // No valid options
+                 }
+             } else if (defaultHoursOptions.length > 0) {
+                 determinedDefaultHours = defaultHoursOptions[0]; // Fallback if no default type
+             } else {
+                 determinedDefaultHours = ''; // No valid options
+             }
         }
 
         baseHours = determinedDefaultHours;
+        // If setting to T and role is still empty, try setting default role again
+        if (!role && employee.defaultRole) role = employee.defaultRole;
+        holidayReason = undefined; // Clear holiday reason when setting to T
 
-         // If setting to T and role/hours are still empty, try setting defaults again
-         if (!role && employee.defaultRole) role = employee.defaultRole;
-         // baseHours logic above should handle default assignment
-
-      }
-      // For F or FF, clear role and hours
-       else {
+      } else if (newShift === 'F') {
+         // Clear details when setting to F
          role = '';
          baseHours = '';
-       }
+         holidayReason = undefined;
+      } else if (newShift === 'FF') {
+         // Clear T details, keep existing holidayReason (or set to empty string if undefined)
+         role = '';
+         baseHours = '';
+         holidayReason = existingEntry.holidayReason ?? ''; // Keep existing reason or initialize if needed
+      }
 
       return {
         ...prev,
         [key]: {
-          ...(existingEntry || {}),
           shift: newShift,
           role: role,
           baseHours: baseHours,
+          holidayReason: holidayReason,
         } as ScheduleEntry,
       };
     });
-  }, [employees, schedule, toast, checkFixedDayOff, isHoliday]); // isHoliday dependency is now valid
+  }, [employees, schedule, toast, checkFixedDayOff, isHoliday]);
 
 
-  const handleDetailChange = useCallback((empId: number, date: Date, field: 'role' | 'baseHours', value: string) => {
+  const handleDetailChange = useCallback((empId: number, date: Date, field: 'role' | 'baseHours' | 'holidayReason', value: string) => {
       setSchedule(prev => {
           const key = getScheduleKey(empId, date);
-           const currentEntry = prev[key] || { shift: 'F', role: '', baseHours: '' }; // Default F
-           // Allow editing details only if the current shift is 'T'
-           if (currentEntry.shift !== 'T') {
-               toast({
-                   title: "Ação Inválida",
-                   description: "Só é possível definir Função/Horário para dias de Trabalho (T).",
-                   variant: "default"
-               });
-               return prev;
-           }
+          const currentEntry = prev[key] || { shift: 'F', role: '', baseHours: '', holidayReason: undefined };
+
+          // Validation: Role/BaseHours only for 'T', HolidayReason only for 'FF'
+          if (field === 'role' || field === 'baseHours') {
+              if (currentEntry.shift !== 'T') {
+                   toast({
+                       title: "Ação Inválida",
+                       description: "Só é possível definir Função/Horário para dias de Trabalho (T).",
+                       variant: "default"
+                   });
+                   return prev; // Don't update state
+              }
+          } else if (field === 'holidayReason') {
+               if (currentEntry.shift !== 'FF') {
+                    toast({
+                       title: "Ação Inválida",
+                       description: "Só é possível definir Motivo do Feriado para dias de Folga Feriado (FF).",
+                       variant: "default"
+                    });
+                    return prev; // Don't update state
+               }
+          }
+
           return { ...prev, [key]: { ...currentEntry, [field]: value } };
       });
   }, [toast]);
@@ -483,8 +543,8 @@ export function ShiftMasterApp() {
       employees.forEach(emp => {
           datesForMonth.forEach(date => {
               const key = getScheduleKey(emp.id, date);
-               // Reset to 'F' (Folga), clearing role/hours
-               newSchedule[key] = { shift: 'F', role: '', baseHours: '' };
+               // Reset to 'F' (Folga), clearing role/hours/reason
+               newSchedule[key] = { shift: 'F', role: '', baseHours: '', holidayReason: undefined };
           });
       });
 
@@ -534,7 +594,7 @@ export function ShiftMasterApp() {
                  } else if (entry.shift === 'F') {
                     cellText = 'F';
                  } else if (entry.shift === 'FF') {
-                    cellText = 'FF';
+                    cellText = entry.holidayReason ? `FF\n(${entry.holidayReason.substring(0,5)})` : 'FF'; // Show reason initial if exists
                  }
              }
              row.push(cellText);
@@ -678,7 +738,7 @@ export function ShiftMasterApp() {
      doc.save(`escala_${format(tableStartDate, 'yyyy-MM')}.pdf`);
      toast({ title: "Sucesso", description: "PDF da escala gerado." });
 
- }, [isClient, currentMonth, filteredEmployees, schedule, toast, holidays, isHoliday]); // Add holidays and isHoliday
+ }, [isClient, currentMonth, filteredEmployees, schedule, toast, holidays, isHoliday]);
 
 
   const generateDailyWhatsAppText = useCallback(() => {
@@ -686,7 +746,7 @@ export function ShiftMasterApp() {
            toast({ title: "Erro", description: "Selecione uma data para gerar o texto do WhatsApp.", variant: "destructive" });
           return;
       }
-       const holidayStatus = isHoliday(filters.selectedDate); // Use isHoliday here
+       const holidayStatus = isHoliday(filters.selectedDate);
        const text = generateWhatsAppText(filters.selectedDate, employees, schedule, holidayStatus, roleToEmojiMap);
 
       navigator.clipboard.writeText(text).then(() => {
@@ -696,7 +756,7 @@ export function ShiftMasterApp() {
           toast({ title: "Erro", description: "Falha ao copiar texto.", variant: "destructive" });
       });
 
-  }, [isClient, filters.selectedDate, employees, schedule, toast, isHoliday, roleToEmojiMap]); // Add isHoliday dependency
+  }, [isClient, filters.selectedDate, employees, schedule, toast, isHoliday, roleToEmojiMap]); // Add roleToEmojiMap here
 
 
   // --- Render Logic ---

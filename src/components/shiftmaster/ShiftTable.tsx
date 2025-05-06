@@ -2,10 +2,10 @@
 'use client';
 
 import React, { useState, useCallback } from 'react'; // Added useState, useCallback
-import type { Employee, ScheduleData, ShiftCode, DayOfWeek } from './types';
+import type { Employee, ScheduleData, ShiftCode, DayOfWeek, ScheduleEntry } from './types';
 import { ShiftCell } from './ShiftCell';
 import { getScheduleKey } from './utils';
-import { format, isEqual, startOfDay } from 'date-fns'; // Added isEqual, startOfDay
+import { format, isEqual, startOfDay, addDays } from 'date-fns'; // Added isEqual, startOfDay, addDays
 import { ptBR } from 'date-fns/locale';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertTriangle, Edit, Trash2, CalendarHeart } from 'lucide-react'; // Added CalendarHeart for holiday toggle
@@ -20,7 +20,7 @@ interface ShiftTableProps {
   dates: Date[];
   holidays: Date[]; // New prop for holidays
   onShiftChange: (empId: number, date: Date, newShift: ShiftCode) => void;
-  onDetailChange: (empId: number, date: Date, field: 'role' | 'baseHours', value: string) => void;
+  onDetailChange: (empId: number, date: Date, field: 'role' | 'baseHours' | 'holidayReason', value: string) => void;
   onEditEmployee: (employee: Employee) => void;
   onDeleteEmployee: (empId: number) => void;
   onToggleHoliday: (date: Date) => void; // New callback for toggling holiday
@@ -45,66 +45,67 @@ export function ShiftTable({
 
    // Helper to check if a date is a holiday
    const isHoliday = useCallback((date: Date): boolean => {
+      if (!date || isNaN(date.getTime())) return false; // Basic check
       const startOfDate = startOfDay(date);
       return holidays.some(holiday => isEqual(startOfDay(holiday), startOfDate));
    }, [holidays]);
 
-   // Check for rule violations for visual feedback
-   const checkViolations = (empId: number, date: Date): { consecutiveDays: boolean; consecutiveSundays: boolean; fixedDayOff: boolean } => {
-       const employee = employees.find(e => e.id === empId);
-       if (!employee) return { consecutiveDays: false, consecutiveSundays: false, fixedDayOff: false };
+    // Check for rule violations for visual feedback
+    const checkViolations = useCallback((empId: number, date: Date): { consecutiveDays: boolean; consecutiveSundays: boolean; fixedDayOff: boolean } => {
+        const employee = employees.find(e => e.id === empId);
+        if (!employee) return { consecutiveDays: false, consecutiveSundays: false, fixedDayOff: false };
 
-       const key = getScheduleKey(empId, date);
-       const currentShift = schedule[key]?.shift;
+        const key = getScheduleKey(empId, date);
+        const currentShift = schedule[key]?.shift;
 
-       // Violations only apply if the shift is 'T' (Trabalha)
-       if (currentShift !== 'T') {
-           return { consecutiveDays: false, consecutiveSundays: false, fixedDayOff: false };
-       }
+        // Violations only apply if the shift is 'T' (Trabalha)
+        if (currentShift !== 'T') {
+            return { consecutiveDays: false, consecutiveSundays: false, fixedDayOff: false };
+        }
 
-       // 1. Consecutive Days Check (> 6 ending *on this date*)
-       let consecutiveDaysCount = 0;
-       for (let i = 0; i < 7; i++) {
-           const checkDate = new Date(date);
-           checkDate.setDate(date.getDate() - i);
-           if (schedule[getScheduleKey(empId, checkDate)]?.shift === 'T') {
-                consecutiveDaysCount++;
-           } else if (i > 0) {
-                break;
-           }
-       }
-       const consecutiveDaysViolation = consecutiveDaysCount > 6;
+        // 1. Consecutive Days Check (> 6 ending *on this date*)
+        let consecutiveDaysCount = 1; // Start with 1 for the current date
+        for (let i = 1; i <= 6; i++) { // Check previous 6 days
+            const checkDate = addDays(date, -i);
+            if (schedule[getScheduleKey(empId, checkDate)]?.shift === 'T') {
+                 consecutiveDaysCount++;
+            } else {
+                 break; // Stop if a non-T day is found
+            }
+        }
+        const consecutiveDaysViolation = consecutiveDaysCount > 6;
+
 
        // 2. Consecutive Sundays Check (> 3 ending *on this date*)
        let consecutiveSundaysViolation = false;
-       if (date.getDay() === 0) {
-           let consecutiveSundaysCount = 0;
-           for (let i = 0; i < 4; i++) {
-               const checkSunday = new Date(date);
-               checkSunday.setDate(date.getDate() - i * 7);
+       if (date.getDay() === 0) { // If the current date is a Sunday
+           let consecutiveSundaysCount = 1; // Start with 1 for the current Sunday
+           for (let i = 1; i <= 3; i++) { // Check previous 3 Sundays
+               const checkSunday = addDays(date, -i * 7);
                if (schedule[getScheduleKey(empId, checkSunday)]?.shift === 'T') {
                     consecutiveSundaysCount++;
                } else {
-                    break;
+                    break; // Stop if a previous Sunday wasn't 'T'
                }
            }
            consecutiveSundaysViolation = consecutiveSundaysCount > 3;
        }
 
-       // 3. Fixed Day Off Check (Working on the designated fixed day off)
-        const dayOfWeek = date.getDay();
-        const fixedDayMapping: { [key in DayOfWeek]?: number } = {
-            "Domingo": 0, "Segunda": 1, "Terça": 2, "Quarta": 3, "Quinta": 4, "Sexta": 5, "Sábado": 6
-        };
-        const fixedDayNum = employee.fixedDayOff ? fixedDayMapping[employee.fixedDayOff] : undefined;
-        const fixedDayOffViolation = fixedDayNum !== undefined && dayOfWeek === fixedDayNum;
 
-       return {
-           consecutiveDays: consecutiveDaysViolation,
-           consecutiveSundays: consecutiveSundaysViolation,
-           fixedDayOff: fixedDayOffViolation
-       };
-   };
+        // 3. Fixed Day Off Check (Working on the designated fixed day off)
+         const dayOfWeek = date.getDay();
+         const fixedDayMapping: { [key in DayOfWeek]?: number } = {
+             "Domingo": 0, "Segunda": 1, "Terça": 2, "Quarta": 3, "Quinta": 4, "Sexta": 5, "Sábado": 6
+         };
+         const fixedDayNum = employee.fixedDayOff ? fixedDayMapping[employee.fixedDayOff] : undefined;
+         const fixedDayOffViolation = fixedDayNum !== undefined && dayOfWeek === fixedDayNum;
+
+        return {
+            consecutiveDays: consecutiveDaysViolation,
+            consecutiveSundays: consecutiveSundaysViolation,
+            fixedDayOff: fixedDayOffViolation
+        };
+    }, [employees, schedule]); // Dependencies: employees and schedule
 
 
   return (
@@ -209,19 +210,13 @@ export function ShiftTable({
                   {/* Schedule Cells */}
                   {dates.map(date => {
                     const key = getScheduleKey(emp.id, date);
-                    const cellData = schedule[key];
+                    const cellData = schedule[key]; // Might be undefined
                     const violations = checkViolations(emp.id, date);
                     const holidayStatus = isHoliday(date);
                     const hasViolation = cellData?.shift === 'T' && (violations.consecutiveDays || violations.consecutiveSundays || violations.fixedDayOff);
 
-                    const currentShift = cellData?.shift || 'F'; // Default to Folga
-                    let roleForCell = '';
-                    let hoursForCell = '';
-
-                    if (currentShift === 'T') {
-                         roleForCell = cellData?.role || emp.defaultRole || '';
-                         hoursForCell = cellData?.baseHours || (emp.defaultShiftType && emp.defaultShiftType !== 'Nenhum' ? shiftTypeToHoursMap[emp.defaultShiftType] : '');
-                     }
+                    // Ensure we have a valid ScheduleEntry object or a default 'F'
+                    const scheduleEntry: ScheduleEntry = cellData || { shift: 'F', role: '', baseHours: '', holidayReason: undefined };
 
                     return (
                       <TableCell key={date.toISOString()} className={cn(
@@ -246,12 +241,13 @@ export function ShiftTable({
                           )}
                           <div className="w-full h-full">
                               <ShiftCell
-                                shift={currentShift}
-                                role={roleForCell}
-                                baseHours={hoursForCell}
+                                shift={scheduleEntry.shift}
+                                role={scheduleEntry.role}
+                                baseHours={scheduleEntry.baseHours}
+                                holidayReason={scheduleEntry.holidayReason} // Pass reason
                                 date={date}
                                 availableRoles={defaultAvailableRoles}
-                                isHoliday={holidayStatus} // Pass holiday status
+                                isHoliday={holidayStatus} // Pass day's holiday status
                                 onChange={(newShift) => onShiftChange(emp.id, date, newShift)}
                                 onDetailChange={(field, value) => onDetailChange(emp.id, date, field, value)}
                                 hasViolation={hasViolation}
@@ -269,6 +265,7 @@ export function ShiftTable({
        <div className="mt-4 p-2 border rounded bg-card text-sm">
             <h4 className="font-semibold mb-2">Legenda:</h4>
             <div className="flex flex-wrap gap-x-4 gap-y-1">
+                {/* Use availableShiftCodes from types.ts to generate legend dynamically */}
                 {Object.entries(shiftCodeToDescription).map(([code, description]) => (
                     <div key={code} className="flex items-center gap-2">
                         <span className={cn(

@@ -1,5 +1,4 @@
 
-
 // Define the possible states for a shift cell
 export type ShiftCode = 'T' | 'F' | 'FF'; // Trabalha, Folga, Folga Feriado
 
@@ -11,6 +10,7 @@ export const shiftCodeToDescription: Record<ShiftCode, string> = {
 };
 
 // Define the available shift codes that can be cycled or assigned
+// Note: Direct cycling in ShiftCell is only T <-> F. FF is set via popover.
 export const availableShiftCodes: ShiftCode[] = ['T', 'F', 'FF'];
 
 // Existing types (keep as is unless modification needed based on new requirements)
@@ -29,6 +29,7 @@ export interface ScheduleEntry {
   shift: ShiftCode;
   role: string; // Role is relevant only when shift is 'T'
   baseHours: string; // BaseHours is relevant only when shift is 'T'
+  holidayReason?: string; // Optional reason for FF shift
 }
 
 export type ScheduleData = Record<string, ScheduleEntry>;
