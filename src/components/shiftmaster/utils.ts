@@ -224,4 +224,3 @@ export function generateWhatsAppText(
 
     return text.trim(); // Remove trailing newline
 }
-```
