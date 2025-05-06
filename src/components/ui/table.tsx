@@ -12,7 +12,7 @@ const Table = React.forwardRef<
       ref={ref}
       className={cn("w-full caption-bottom text-sm", className)}
       {...props}
-    >
+    >{/* Ensure no whitespace before or after children */}
       {children}
     </table>
   </div>
