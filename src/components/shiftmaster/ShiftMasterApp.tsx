@@ -5,9 +5,10 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ShiftFilters } from './ShiftFilters';
 import { ShiftTable } from './ShiftTable';
 import type { Employee, ScheduleData, FilterState, ShiftCode, DayOfWeek, ShiftType } from './types';
-import { generateInitialData, getScheduleKey, generateWhatsAppText } from './utils';
+import { generateInitialData, getScheduleKey, generateWhatsAppText, getDatesInRange } from './utils'; // Added getDatesInRange import
 import { useToast } from "@/hooks/use-toast";
 import { isAfter, isBefore, parseISO, differenceInDays, addDays, format } from 'date-fns';
+import { ptBR } from 'date-fns/locale'; // Import ptBR locale
 import { Button } from '@/components/ui/button';
 import { UserPlus, FileText, MessageSquareText } from 'lucide-react';
 import { EditEmployeeDialog } from './EditEmployeeDialog'; // Import the new dialog
@@ -238,7 +239,12 @@ export function ShiftMasterApp() {
          // Use existing details if available, otherwise pull from employee defaults
         const existingEntry = schedule[key];
         const role = existingEntry?.role || employee.defaultRole || '';
-        const baseHours = existingEntry?.baseHours || (employee.defaultShiftType && employee.defaultShiftType !== 'Nenhum' ? require('./types').shiftTypeToHoursMap[employee.defaultShiftType] : '');
+        // Get default hours based on defaultShiftType if available
+        const defaultHours = employee.defaultShiftType && employee.defaultShiftType !== 'Nenhum'
+                           ? require('./types').shiftTypeToHoursMap[employee.defaultShiftType]
+                           : '';
+        const baseHours = existingEntry?.baseHours || defaultHours;
+
 
          tempSchedule[key] = {
              shift: newShift,
@@ -301,7 +307,10 @@ export function ShiftMasterApp() {
 
        // Use existing role/hours if they exist, otherwise try employee defaults
        const role = existingEntry?.role || employee.defaultRole || '';
-       const baseHours = existingEntry?.baseHours || (employee.defaultShiftType && employee.defaultShiftType !== 'Nenhum' ? require('./types').shiftTypeToHoursMap[employee.defaultShiftType] : '');
+       const defaultHours = employee.defaultShiftType && employee.defaultShiftType !== 'Nenhum'
+                            ? require('./types').shiftTypeToHoursMap[employee.defaultShiftType]
+                            : '';
+       const baseHours = existingEntry?.baseHours || defaultHours;
 
 
       return {
@@ -448,7 +457,7 @@ export function ShiftMasterApp() {
      doc.save(`escala_${format(tableStartDate, 'yyyyMMdd')}_${format(tableEndDate, 'yyyyMMdd')}.pdf`);
      toast({ title: "Sucesso", description: "PDF da escala gerado." });
 
- }, [isClient, filters.startDate, filters.endDate, filteredEmployees, schedule, toast, ptBR]); // Ensure ptBR locale is correctly imported or handled
+ }, [isClient, filters.startDate, filters.endDate, filteredEmployees, schedule, toast]); // Removed ptBR from here, it's imported
 
 
   const generateDailyWhatsAppText = useCallback(() => {
@@ -549,3 +558,5 @@ export function ShiftMasterApp() {
     </div>
   );
 }
+
+    
