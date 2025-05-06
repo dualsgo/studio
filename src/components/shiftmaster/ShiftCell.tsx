@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react'; // Added useMemo
 import type { ShiftCode } from './types';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -17,7 +17,6 @@ interface ShiftCellProps {
   baseHours: string; // Current base hours for this specific cell/day
   date: Date;
   availableRoles: string[]; // Global list of available roles
-  // availableTimes removed, will be determined by date
   onChange: (newShift: ShiftCode) => void;
   onDetailChange: (field: 'role' | 'baseHours', value: string) => void;
   hasViolation: boolean; // To style the cell if there's a violation
@@ -46,6 +45,9 @@ export function ShiftCell({
   hasViolation,
 }: ShiftCellProps) {
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+
+  // Determine available time options based on the date using useMemo
+  const availableTimesForDay = useMemo(() => getTimeOptionsForDate(date), [date]);
 
   const handleClick = useCallback((event: React.MouseEvent) => {
     // Prevent cycling if clicking the edit icon or if popover should open
@@ -88,8 +90,6 @@ export function ShiftCell({
       setIsPopoverOpen(true);
    };
 
-   // Determine available time options based on the date
-   const availableTimesForDay = getTimeOptionsForDate(date);
 
   return (
     <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
