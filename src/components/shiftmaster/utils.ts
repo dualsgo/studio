@@ -1,5 +1,6 @@
 
 import { addDays, format, startOfDay } from 'date-fns';
+import { ptBR } from 'date-fns/locale'; // Import ptBR locale correctly
 import type { Employee, ScheduleData, ShiftCode, FilterState, DayOfWeek, ShiftType } from './types';
 import { shiftTypeToHoursMap, daysOfWeek, availableRoles, availableShiftTypes } from './types'; // Import maps and constants
 
@@ -127,7 +128,7 @@ export function generateWhatsAppText(
     employees: Employee[],
     schedule: ScheduleData
 ): string {
-    const formattedDate = format(date, 'EEEE, dd/MM/yyyy', { locale: require('date-fns/locale/pt-BR') });
+    const formattedDate = format(date, 'EEEE, dd/MM/yyyy', { locale: ptBR }); // Use imported locale
     let text = `*Escala do Dia: ${formattedDate}*\n\n`;
     let hasEntries = false;
 
