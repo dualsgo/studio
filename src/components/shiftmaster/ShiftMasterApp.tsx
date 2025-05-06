@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import { roleToEmojiMap, daysOfWeek, shiftCodeToDescription, availableShiftCodes } from './types'; // Import descriptions and available codes
+import { roleToEmojiMap, daysOfWeek, shiftCodeToDescription, availableShiftCodes, shiftTypeToHoursMap, getTimeOptionsForDate } from './types'; // Import descriptions and available codes // Added shiftTypeToHoursMap // Added getTimeOptionsForDate
 import { cn } from '@/lib/utils'; // Import cn
 
 declare module 'jspdf' {
@@ -90,7 +90,7 @@ export function ShiftMasterApp() {
       initializeDefaultData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast]);
+  }, [toast]); // initializeDefaultData is intentionally omitted as it should only run once
 
   const initializeDefaultData = useCallback(() => {
     const { initialEmployees, initialSchedule, initialFilters, initialHolidays } = generateInitialData();
@@ -99,7 +99,7 @@ export function ShiftMasterApp() {
     setFilters(initialFilters);
     setHolidays(initialHolidays); // Set initial holidays
     setCurrentMonth(startOfMonth(initialFilters.selectedDate));
-  }, []);
+  }, []); // Empty dependency array ensures it runs only once
 
   // Save data to localStorage whenever it changes
   useEffect(() => {
@@ -107,7 +107,7 @@ export function ShiftMasterApp() {
       saveToLocalStorage(employees, schedule, filters, holidays); // Include holidays in save
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employees, schedule, filters, holidays]); // Add holidays dependency
+  }, [employees, schedule, filters, holidays, isClient]); // Add holidays and isClient dependency
 
    const saveToLocalStorage = (emps: Employee[], sched: ScheduleData, filt: AppFilterState, hols: Date[]) => {
     try {
@@ -125,27 +125,30 @@ export function ShiftMasterApp() {
   };
 
   // --- Holiday Management ---
-  const handleToggleHoliday = useCallback((date: Date) => {
-      const dateStart = startOfDay(date);
-      setHolidays(prev => {
-          const existingIndex = prev.findIndex(d => isEqual(startOfDay(d), dateStart));
-          if (existingIndex > -1) {
-              // Remove holiday
-              return prev.filter((_, index) => index !== existingIndex);
-          } else {
-              // Add holiday
-              return [...prev, dateStart].sort((a, b) => a.getTime() - b.getTime()); // Keep sorted
-          }
-      });
-      // Optionally, update schedule for the day if needed (e.g., clear T shifts?)
-      // Or let the getTimeOptions handle the available times based on the new holiday status
-       toast({ title: "Feriado Atualizado", description: `Dia ${format(date, 'dd/MM')} ${isHoliday(date) ? 'não é mais' : 'agora é'} feriado.` });
-  }, [holidays, toast]); // Include isHoliday defined below
+   // IMPORTANT: Define isHoliday *before* it's used in other useCallback hooks below
+   const isHoliday = useCallback((date: Date): boolean => {
+       if (!date || isNaN(date.getTime())) return false; // Basic date validation
+       const startOfDate = startOfDay(date);
+       return holidays.some(holiday => isEqual(startOfDay(holiday), startOfDate));
+   }, [holidays]);
 
-  const isHoliday = useCallback((date: Date): boolean => {
-      const startOfDate = startOfDay(date);
-      return holidays.some(holiday => isEqual(startOfDay(holiday), startOfDate));
-  }, [holidays]);
+   const handleToggleHoliday = useCallback((date: Date) => {
+       const dateStart = startOfDay(date);
+       const wasHoliday = isHoliday(date); // Check status *before* changing
+       setHolidays(prev => {
+           const existingIndex = prev.findIndex(d => isEqual(startOfDay(d), dateStart));
+           if (existingIndex > -1) {
+               // Remove holiday
+               return prev.filter((_, index) => index !== existingIndex);
+           } else {
+               // Add holiday
+               return [...prev, dateStart].sort((a, b) => a.getTime() - b.getTime()); // Keep sorted
+           }
+       });
+
+       toast({ title: "Feriado Atualizado", description: `Dia ${format(date, 'dd/MM')} ${wasHoliday ? 'não é mais' : 'agora é'} feriado.` });
+   }, [holidays, toast, isHoliday]); // isHoliday dependency is now valid
+
 
   // --- Filter Handlers ---
   const handleFilterChange = useCallback((newFilters: AppPartialFilterState) => {
@@ -245,14 +248,14 @@ export function ShiftMasterApp() {
                          let resetRole = '';
                          let resetHours = '';
                           if (employeeData.defaultRole && employeeData.defaultShiftType && employeeData.defaultShiftType !== 'Nenhum') {
-                              const { shiftTypeToHoursMap } = require('./types');
                               resetShift = 'T';
                               resetRole = employeeData.defaultRole;
                               // Get default hours, considering if the day is a holiday
-                              const defaultHours = shiftTypeToHoursMap[employeeData.defaultShiftType] || '';
+                              const dayIsHoliday = isHoliday(date); // Use isHoliday here
+                              const defaultHoursOptions = getTimeOptionsForDate(date, dayIsHoliday);
                               // We might need a more sophisticated way to get the *correct* default hours here
-                              // For now, just use the basic mapping
-                              resetHours = defaultHours;
+                              const basicDefault = shiftTypeToHoursMap[employeeData.defaultShiftType] || '';
+                              resetHours = defaultHoursOptions.includes(basicDefault) ? basicDefault : (defaultHoursOptions[0] || '');
                           }
                          newSchedule[key] = { ...currentEntry, shift: resetShift, role: resetRole, baseHours: resetHours };
                      }
@@ -267,19 +270,19 @@ export function ShiftMasterApp() {
       setIsEditDialogOpen(false);
       setEditingEmployee(null);
       toast({ title: "Sucesso", description: `Colaborador ${isNewEmployee ? 'adicionado' : 'atualizado'}.` });
-  }, [toast, currentMonth]);
+  }, [toast, currentMonth, isHoliday]); // isHoliday dependency is now valid
 
 
   // --- Schedule Management Handlers ---
 
-   const checkFixedDayOff = (employee: Employee, date: Date): boolean => {
+   const checkFixedDayOff = useCallback((employee: Employee, date: Date): boolean => {
     if (!employee.fixedDayOff) return false;
     const dayOfWeek = date.getDay();
     const fixedDayMapping: { [key in DayOfWeek]?: number } = {};
     daysOfWeek.forEach((day, index) => fixedDayMapping[day] = index);
     const fixedDayNum = fixedDayMapping[employee.fixedDayOff];
     return fixedDayNum !== undefined && dayOfWeek === fixedDayNum;
-  };
+  }, []);
 
 
   const handleShiftChange = useCallback((empId: number, date: Date, newShift: ShiftCode) => {
@@ -309,7 +312,7 @@ export function ShiftMasterApp() {
 
         const role = existingEntry?.role || employee.defaultRole || '';
         const defaultHours = employee.defaultShiftType && employee.defaultShiftType !== 'Nenhum'
-                           ? require('./types').shiftTypeToHoursMap[employee.defaultShiftType]
+                           ? shiftTypeToHoursMap[employee.defaultShiftType] // Direct import from types.ts is safe here
                            : '';
         const baseHours = existingEntry?.baseHours || defaultHours;
 
@@ -371,9 +374,9 @@ export function ShiftMasterApp() {
       if (newShift === 'T') {
         role = existingEntry?.role || employee.defaultRole || '';
         const defaultShiftType = employee.defaultShiftType;
-        const dayIsHoliday = isHoliday(date);
+        const dayIsHoliday = isHoliday(date); // Use isHoliday here
         const defaultHoursOptions = defaultShiftType && defaultShiftType !== 'Nenhum'
-                                    ? require('./types').getTimeOptionsForDate(date, dayIsHoliday) // Get options based on day/holiday
+                                    ? getTimeOptionsForDate(date, dayIsHoliday) // Get options based on day/holiday
                                     : [];
         // Try to find a matching default hour, or use the first option, or keep existing
         let determinedDefaultHours = existingEntry?.baseHours || '';
@@ -410,7 +413,7 @@ export function ShiftMasterApp() {
         } as ScheduleEntry,
       };
     });
-  }, [employees, schedule, toast, checkFixedDayOff, isHoliday]); // Add dependencies
+  }, [employees, schedule, toast, checkFixedDayOff, isHoliday]); // isHoliday dependency is now valid
 
 
   const handleDetailChange = useCallback((empId: number, date: Date, field: 'role' | 'baseHours', value: string) => {
@@ -679,7 +682,7 @@ export function ShiftMasterApp() {
            toast({ title: "Erro", description: "Selecione uma data para gerar o texto do WhatsApp.", variant: "destructive" });
           return;
       }
-       const holidayStatus = isHoliday(filters.selectedDate);
+       const holidayStatus = isHoliday(filters.selectedDate); // Use isHoliday here
        const text = generateWhatsAppText(filters.selectedDate, employees, schedule, holidayStatus, roleToEmojiMap);
 
       navigator.clipboard.writeText(text).then(() => {
@@ -689,7 +692,7 @@ export function ShiftMasterApp() {
           toast({ title: "Erro", description: "Falha ao copiar texto.", variant: "destructive" });
       });
 
-  }, [isClient, filters.selectedDate, employees, schedule, toast, isHoliday, roleToEmojiMap]); // Add dependencies
+  }, [isClient, filters.selectedDate, employees, schedule, toast, isHoliday, roleToEmojiMap]); // Add isHoliday dependency
 
 
   // --- Render Logic ---
@@ -727,7 +730,7 @@ export function ShiftMasterApp() {
        <ShiftFilters
          filters={filters}
          employees={employees}
-         roles={require('./types').availableRoles}
+         roles={availableRoles} // Use imported availableRoles
          onFilterChange={handleFilterChange}
       />
 
@@ -799,4 +802,3 @@ export function ShiftMasterApp() {
     </div>
   );
 }
-
