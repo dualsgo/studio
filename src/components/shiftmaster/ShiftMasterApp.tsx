@@ -16,8 +16,8 @@ import { ShiftTable } from './ShiftTable';
 import { Button } from '@/components/ui/button';
 import { WifiOff } from 'lucide-react';
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel } from "@/components/ui/alert-dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -124,19 +124,29 @@ export function ShiftMasterApp() {
     const [isLoading, setIsLoading] = useState(true); // For data fetching status
     const [isClearingMonth, setIsClearingMonth] = useState(false);
     const [hasMounted, setHasMounted] = useState(false);
+    const [initialLoadCompleted, setInitialLoadCompleted] = useState(false);
 
 
     const { toast } = useToast();
     const isClient = typeof window !== 'undefined';
     const tableContainerRef = useRef<HTMLDivElement>(null);
 
-    // Effect to set initial dates and mark as mounted (Client-side only)
+    // Effect to derive currentMonth from filters.selectedDate
+    useEffect(() => {
+      if (filters.selectedDate) {
+        const newCurrentMonth = startOfMonth(filters.selectedDate);
+        if (!currentMonth || !isEqual(newCurrentMonth, currentMonth)) {
+          setCurrentMonth(newCurrentMonth);
+        }
+      }
+    }, [filters.selectedDate, currentMonth]);
+
+    // Effect for initial date setup and marking as mounted
     useEffect(() => {
       const now = new Date();
-      let initialSelectedDate = now;
-      let initialCurrentMonth = startOfMonth(now);
+      let newSelectedDate = now;
 
-      if (isClient) { // localStorage is only available on the client
+      if (isClient) {
         const localDataString = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (localDataString) {
           try {
@@ -144,23 +154,24 @@ export function ShiftMasterApp() {
             if (parsedLocalData.filters?.selectedDate) {
               const storedDate = parseISO(parsedLocalData.filters.selectedDate);
               if (!isNaN(storedDate.getTime())) {
-                initialSelectedDate = storedDate;
-                initialCurrentMonth = startOfMonth(storedDate);
+                newSelectedDate = storedDate;
               }
             }
           } catch (error) {
-            console.warn("Failed to parse dates from localStorage:", error);
+            console.warn("Failed to parse selectedDate from localStorage:", error);
           }
         }
       }
+      newSelectedDate = startOfDay(newSelectedDate); // Normalize
 
-      setCurrentMonth(initialCurrentMonth);
-      setFilters(prevFilters => ({
-        ...prevFilters,
-        selectedDate: initialSelectedDate,
-      }));
+      setFilters(prevFilters => {
+        if (!prevFilters.selectedDate || !isEqual(newSelectedDate, prevFilters.selectedDate)) {
+          return { ...prevFilters, selectedDate: newSelectedDate };
+        }
+        return prevFilters;
+      });
       setHasMounted(true);
-    }, [isClient]); // Runs once on client mount, re-runs if isClient changes (though it shouldn't post-mount)
+    }, [isClient]);
 
 
     // --- Firebase/Data Handling ---
@@ -171,9 +182,20 @@ export function ShiftMasterApp() {
             setIsFirebaseConnected(false);
             return false;
         }
-        setIsFirebaseConnected(true);
-        return true;
-    }, [setIsFirebaseConnected]);
+        // Basic connectivity check (optional, can be more robust)
+        try {
+            await getDoc(doc(db, "__connectivity_test__", "doc")); // Attempt a dummy read
+            setIsFirebaseConnected(true);
+            return true;
+        } catch (error) {
+             // Check if the error is due to the document not existing (which is fine for a test)
+            // or a more serious connectivity issue.
+            // This example assumes any error means not connected, simplify as needed.
+            console.warn("Firebase connectivity check failed:", error);
+            setIsFirebaseConnected(false);
+            return false;
+        }
+    }, [setIsFirebaseConnected]); // Removed db from dependencies as it should be stable
 
     // Save data to Local Storage
      const saveDataToLocalStorage = useCallback((employeesData: Employee[], scheduleData: ScheduleData, filtersData: FilterState, holidaysData: Date[]) => {
@@ -191,7 +213,7 @@ export function ShiftMasterApp() {
             localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(dataToStore));
         } catch (error) {
             console.error("Failed to save data to localStorage:", error);
-            toast({ title: "Erro de Armazenamento Local", description: "Não foi possível salvar as alterações localmente.", variant: "destructive" });
+            toast({ title: "Erro de Armazenamento Local", description: "Não foi possível salvar as alterações localmente.", variant: "destructive", duration: toastDuration });
         }
     }, [isClient, toast]);
 
@@ -205,43 +227,50 @@ export function ShiftMasterApp() {
                 if (parsedData.employees && parsedData.schedule) {
                     setEmployees(parsedData.employees);
                     setSchedule(parsedData.schedule);
-                    const loadedSelectedDate = parsedData.filters?.selectedDate ? parseISO(parsedData.filters.selectedDate) : new Date();
-                    setFilters({
+
+                    const loadedSelectedDate = parsedData.filters?.selectedDate ? startOfDay(parseISO(parsedData.filters.selectedDate)) : startOfDay(new Date());
+                    const loadedFilters = {
                       employee: parsedData.filters?.employee ?? '',
                       role: parsedData.filters?.role ?? '',
                       selectedDate: loadedSelectedDate
-                    });
-                    setHolidays((parsedData.holidays || []).map((isoString: string) => parseISO(isoString)));
-                    // setCurrentMonth is handled by the main date initialization useEffect or when filters.selectedDate changes
-                    if (filters.selectedDate && !currentMonth) { // Ensure currentMonth is set if filters.selectedDate was loaded
-                         setCurrentMonth(startOfMonth(loadedSelectedDate));
-                    }
-                    toast({ title: 'Dados Locais Carregados', description: 'Usando dados salvos localmente.', variant: 'default' });
+                    };
+                    setFilters(prevFilters =>
+                      JSON.stringify(prevFilters) !== JSON.stringify(loadedFilters) ? loadedFilters : prevFilters
+                    );
+
+                    const loadedHolidays = (parsedData.holidays || []).map((isoString: string) => startOfDay(parseISO(isoString)));
+                     setHolidays(prevHolidays =>
+                       JSON.stringify(prevHolidays.map(d => d.toISOString())) !== JSON.stringify(loadedHolidays.map(d => d.toISOString())) ? loadedHolidays : prevHolidays
+                     );
+
+                    toast({ title: 'Dados Locais Carregados', description: 'Usando dados salvos localmente.', variant: 'default', duration: toastDuration });
                     return true;
                 }
             } catch (error) {
                 console.error("Failed to parse localStorage data:", error);
-                toast({ title: "Erro nos Dados Locais", description: "Não foi possível ler os dados locais. Usando dados padrão.", variant: "warning" });
+                toast({ title: "Erro nos Dados Locais", description: "Não foi possível ler os dados locais. Usando dados padrão.", variant: "warning", duration: toastDuration });
             }
         }
         console.log("No valid local data found, generating initial data...");
-        // generateInitialData might rely on currentMonth being set, ensure it's available or passed
-        if(currentMonth) { // Only generate if currentMonth is set
-            const { initialEmployees, initialSchedule, initialFilters, initialHolidays } = generateInitialData(currentMonth);
-            setEmployees(initialEmployees);
-            setSchedule(initialSchedule);
-            // Ensure filters.selectedDate is also set, respecting generateInitialData's output
-            const genSelectedDate = initialFilters.selectedDate || new Date();
-            setFilters({
-                employee: initialFilters.employee,
-                role: initialFilters.role,
-                selectedDate: genSelectedDate
-            });
-            setHolidays(initialHolidays);
-            saveDataToLocalStorage(initialEmployees, initialSchedule, {...initialFilters, selectedDate: genSelectedDate}, initialHolidays);
-        }
+        const baseDateForInitialData = filters.selectedDate || new Date(); // Use current filters.selectedDate or fallback
+        const { initialEmployees, initialSchedule, initialFilters, initialHolidays } = generateInitialData(baseDateForInitialData);
+
+        setEmployees(initialEmployees);
+        setSchedule(initialSchedule);
+
+        const genSelectedDate = startOfDay(initialFilters.selectedDate || new Date());
+        const genFilters = {
+            employee: initialFilters.employee,
+            role: initialFilters.role,
+            selectedDate: genSelectedDate
+        };
+         setFilters(prevFilters =>
+           JSON.stringify(prevFilters) !== JSON.stringify(genFilters) ? genFilters : prevFilters
+         );
+        setHolidays(initialHolidays);
+        saveDataToLocalStorage(initialEmployees, initialSchedule, genFilters, initialHolidays);
         return false;
-    }, [isClient, toast, saveDataToLocalStorage, currentMonth, filters.selectedDate]); // Added currentMonth dependency
+    }, [isClient, toast, saveDataToLocalStorage, filters.selectedDate]);
 
 
      // Update data in Firestore
@@ -267,7 +296,7 @@ export function ShiftMasterApp() {
         try {
             await setDoc(docRef, dataToSave, { merge: true });
             console.log("Document updated successfully in Firestore!");
-            setIsFirebaseConnected(true); // Explicitly set connected on success
+            setIsFirebaseConnected(true);
             return true;
         } catch (e) {
             console.error("Error updating document in Firestore: ", e);
@@ -284,17 +313,20 @@ export function ShiftMasterApp() {
     }, [toast, checkAndInitializeFirebase, saveDataToLocalStorage, setIsFirebaseConnected]);
 
 
-    // Load data from Firestore
-    const loadDataFromFirestore = useCallback(async (docId: string = "scheduleData") => {
+    // Load data from Firestore or LocalStorage (Main data loading effect)
+    const loadInitialData = useCallback(async () => {
         setIsLoading(true);
-        if (!(await checkAndInitializeFirebase()) || !db) {
-             console.log("Firebase not available. Loading from local storage.");
-             loadDataFromLocalStorage(); // This will set states
-             setIsLoading(false);
-             return;
+        let firebaseAvailable = await checkAndInitializeFirebase();
+
+        if (!firebaseAvailable || !db) {
+            console.log("Firebase not available. Loading from local storage.");
+            loadDataFromLocalStorage();
+            setIsLoading(false);
+            setInitialLoadCompleted(true);
+            return;
         }
 
-        const docRef = doc(db, SAVED_SCHEDULES_COLLECTION, docId);
+        const docRef = doc(db, SAVED_SCHEDULES_COLLECTION, "scheduleData");
         try {
             const docSnap = await getDoc(docRef);
             if (docSnap.exists()) {
@@ -308,6 +340,7 @@ export function ShiftMasterApp() {
                         defaultRole: empData.defaultRole || undefined,
                         defaultShiftType: empData.defaultShiftType || undefined,
                     }));
+                    setEmployees(parsedEmployees);
 
                     const parsedSchedule: ScheduleData = {};
                     if (data.schedule) {
@@ -315,88 +348,91 @@ export function ShiftMasterApp() {
                             parsedSchedule[key] = data.schedule[key];
                         }
                     }
+                    setSchedule(parsedSchedule);
+
+                    const loadedSelectedDate = data.filters?.selectedDate ? startOfDay(parseISO(data.filters.selectedDate)) : startOfDay(new Date());
+                    const parsedFilters = {
+                      employee: data.filters?.employee ?? '',
+                      role: data.filters?.role ?? '',
+                      selectedDate: loadedSelectedDate
+                    };
+                    setFilters(prevFilters =>
+                      JSON.stringify(prevFilters) !== JSON.stringify(parsedFilters) ? parsedFilters : prevFilters
+                    );
 
                     const parsedHolidays = (data.holidays || []).map((holiday: string) => {
                         try {
                             const parsedDate = parseISO(holiday);
-                            if (!isNaN(parsedDate.getTime())) {
-                                return startOfDay(parsedDate);
-                            }
-                            console.warn(`Could not parse holiday date string: ${holiday}. Using current date as fallback.`);
-                            return startOfDay(new Date());
+                            return !isNaN(parsedDate.getTime()) ? startOfDay(parsedDate) : startOfDay(new Date());
                         } catch (parseError) {
                             console.error(`Error parsing holiday date string: ${holiday}`, parseError);
                             return startOfDay(new Date());
                         }
                     });
-                    
-                    const loadedSelectedDate = data.filters?.selectedDate ? parseISO(data.filters.selectedDate) : new Date();
-                    const parsedFilters = {
-                      employee: data.filters?.employee ?? '',
-                      role: data.filters?.role ?? '',
-                      selectedDate: loadedSelectedDate
-                    }
+                    setHolidays(prevHolidays =>
+                        JSON.stringify(prevHolidays.map(d => d.toISOString())) !== JSON.stringify(parsedHolidays.map(d => d.toISOString())) ? parsedHolidays : prevHolidays
+                      );
 
-                    setEmployees(parsedEmployees);
-                    setSchedule(parsedSchedule);
-                    setHolidays(parsedHolidays);
-                    setFilters(parsedFilters);
-                    // setCurrentMonth is handled by the main date initialization useEffect or when filters.selectedDate changes
-                    if (parsedFilters.selectedDate && !currentMonth) {
-                        setCurrentMonth(startOfMonth(parsedFilters.selectedDate));
-                    }
-                    toast({ title: 'Sucesso', description: 'Dados carregados do Firestore!' });
+                    toast({ title: 'Sucesso', description: 'Dados carregados do Firestore!', duration: toastDuration });
                 }
             } else {
-                console.log("No such document! Initializing with default data.");
-                 // Ensure currentMonth is available for generateInitialData
-                const baseDateForInitialData = currentMonth || new Date();
-                const { initialEmployees, initialSchedule, initialFilters: genFilters, initialHolidays } = generateInitialData(baseDateForInitialData);
-                setEmployees(initialEmployees);
-                setSchedule(initialSchedule);
-                const initialSelectedDate = genFilters.selectedDate || new Date();
-                setFilters({
-                    employee: genFilters.employee,
-                    role: genFilters.role,
-                    selectedDate: initialSelectedDate,
-                });
-                setHolidays(initialHolidays);
-                if (!currentMonth) { // Set currentMonth if it wasn't already (e.g., from initial load)
-                    setCurrentMonth(startOfMonth(initialSelectedDate));
+                console.log("No such document! Initializing with default data from local or generating new.");
+                if(!loadDataFromLocalStorage()){ // Try local first, if fails, generate new
+                    const baseDateForInitialData = filters.selectedDate || new Date();
+                    const { initialEmployees, initialSchedule, initialFilters: genFilters, initialHolidays } = generateInitialData(baseDateForInitialData);
+                    setEmployees(initialEmployees);
+                    setSchedule(initialSchedule);
+                    const initialSelectedDate = startOfDay(genFilters.selectedDate || new Date());
+                    const finalGenFilters = {
+                        employee: genFilters.employee,
+                        role: genFilters.role,
+                        selectedDate: initialSelectedDate,
+                    };
+                    setFilters(prevFilters =>
+                      JSON.stringify(prevFilters) !== JSON.stringify(finalGenFilters) ? finalGenFilters : prevFilters
+                    );
+                    setHolidays(initialHolidays);
+                    await updateDataInFirestore(initialEmployees, initialSchedule, finalGenFilters, initialHolidays); // Save newly generated to Firestore
+                    toast({ title: 'Aviso', description: 'Nenhum dado encontrado. Iniciando com dados padrão.', duration: toastDuration });
                 }
-                await updateDataInFirestore(initialEmployees, initialSchedule, {...genFilters, selectedDate: initialSelectedDate}, initialHolidays);
-                toast({ title: 'Aviso', description: 'Nenhum dado encontrado. Iniciando com dados padrão.' });
             }
         } catch (error) {
             console.error("Error fetching document:", error);
             setIsFirebaseConnected(false);
             toast({
                 title: "Erro ao Carregar",
-                description: "Falha ao buscar dados do Firestore. Verifique a conexão e as configurações. Usando dados locais, se disponíveis.",
+                description: "Falha ao buscar dados do Firestore. Usando dados locais.",
                 variant: "destructive",
                 duration: 5000,
             });
-            loadDataFromLocalStorage();
+            loadDataFromLocalStorage(); // Fallback to local if Firestore fails
         } finally {
             setIsLoading(false);
+            setInitialLoadCompleted(true);
         }
-    }, [toast, checkAndInitializeFirebase, setIsFirebaseConnected, setIsLoading, loadDataFromLocalStorage, updateDataInFirestore, currentMonth]);
+    }, [checkAndInitializeFirebase, loadDataFromLocalStorage, updateDataInFirestore, toast, filters.selectedDate]); // Minimal dependencies for stability
 
-
+    // Main data loading trigger effect
     useEffect(() => {
-         if (!isClient || !hasMounted || !currentMonth) { // Wait for client, mount, and currentMonth
-             if (!hasMounted) setIsLoading(true); // Keep loading if not mounted
-             else if (hasMounted && !currentMonth) setIsLoading(true); // Or if currentMonth isn't set yet
-             else setIsLoading(false);
-             return;
+         if (!isClient || !hasMounted || !filters.selectedDate || initialLoadCompleted) {
+             if (hasMounted && filters.selectedDate && !initialLoadCompleted) {
+                 // If mounted and dates are set, but initial load not done, proceed.
+             } else {
+                 setIsLoading(false); // Ensure loading is false if we don't proceed
+                 return;
+             }
          }
-        loadDataFromFirestore("scheduleData");
-    }, [isClient, hasMounted, currentMonth, loadDataFromFirestore]); // Depend on currentMonth for initial load
+        loadInitialData();
+    }, [isClient, hasMounted, filters.selectedDate, initialLoadCompleted, loadInitialData]);
 
+
+    // Data persistence effect (save to Firestore/localStorage)
     useEffect(() => {
-        if (isLoading || !hasMounted || !currentMonth) return; // Don't save while initial load is happening or not mounted/dates not set
+        if (isLoading || !initialLoadCompleted || !hasMounted || !currentMonth || !filters.selectedDate) {
+            return; // Don't save while initial load is happening or critical states are not set
+        }
         updateDataInFirestore(employees, schedule, filters, holidays);
-    }, [employees, schedule, filters, holidays, updateDataInFirestore, isLoading, hasMounted, currentMonth]);
+    }, [employees, schedule, filters, holidays, updateDataInFirestore, isLoading, initialLoadCompleted, hasMounted, currentMonth]);
 
 
     // --- Employee CRUD ---
@@ -412,22 +448,15 @@ export function ShiftMasterApp() {
 
         const success = await updateDataInFirestore(newEmployeesArray, schedule, filters, holidays);
         if (!success) {
-            setEmployees(originalEmployees);
-            if (!isFirebaseConnected) {
-                 toast({
-                    title: "Erro de Conexão",
-                    description: "Falha ao adicionar colaborador: Firebase não conectado. Salvo localmente.",
-                    variant: "destructive"
-                });
-            } else {
-                 toast({
-                    title: "Erro no Servidor",
-                    description: "Falha ao adicionar colaborador ao servidor. Salvo localmente.",
-                    variant: "destructive"
-                });
-            }
+            setEmployees(originalEmployees); // Revert on failure
+            toast({
+                title: "Erro",
+                description: `Falha ao adicionar colaborador. ${!isFirebaseConnected ? "Firebase não conectado." : "Erro no servidor."} Mudanças salvas localmente.`,
+                variant: "destructive",
+                duration: toastDuration
+            });
         } else {
-            toast({ title: "Sucesso", description: "Colaborador adicionado e salvo no servidor." });
+            toast({ title: "Sucesso", description: "Colaborador adicionado.", duration: toastDuration });
         }
     };
 
@@ -436,7 +465,7 @@ export function ShiftMasterApp() {
     }, [holidays]);
 
    const updateEmployee = async (employeeData: Employee) => {
-        if (!currentMonth) return; // Guard against null currentMonth
+        if (!currentMonth) return;
         const originalEmployees = [...employees];
         const originalSchedule = {...schedule};
 
@@ -452,23 +481,16 @@ export function ShiftMasterApp() {
 
         const success = await updateDataInFirestore(updatedEmployees, updatedSchedule, filters, holidays);
         if (!success) {
-            setEmployees(originalEmployees);
-            setSchedule(originalSchedule);
-            if (!isFirebaseConnected) {
-                toast({
-                   title: "Erro de Conexão",
-                   description: "Falha ao atualizar colaborador: Firebase não conectado. Salvo localmente.",
-                   variant: "destructive"
+            setEmployees(originalEmployees); // Revert
+            setSchedule(originalSchedule); // Revert
+            toast({
+                   title: "Erro",
+                   description: `Falha ao atualizar colaborador. ${!isFirebaseConnected ? "Firebase não conectado." : "Erro no servidor."} Mudanças salvas localmente.`,
+                   variant: "destructive",
+                   duration: toastDuration
                });
-           } else {
-                toast({
-                   title: "Erro no Servidor",
-                   description: "Falha ao atualizar colaborador no servidor. Salvo localmente.",
-                   variant: "destructive"
-               });
-           }
         } else {
-            toast({ title: "Sucesso", description: "Colaborador atualizado e salvo no servidor." });
+            toast({ title: "Sucesso", description: "Colaborador atualizado.", duration: toastDuration });
         }
     };
 
@@ -477,7 +499,7 @@ export function ShiftMasterApp() {
         currentSchedule: ScheduleData,
         currentHolidays: Date[],
         holidayCheckFn: (date: Date) => boolean,
-        monthForContext: Date // Pass currentMonth explicitly
+        monthForContext: Date
     ): ScheduleData => {
         const newSchedule = { ...currentSchedule };
         const datesInMonth = getDatesInRange(startOfMonth(monthForContext), endOfMonth(monthForContext));
@@ -488,15 +510,16 @@ export function ShiftMasterApp() {
             const key = getScheduleKey(employee.id, date);
             const dayOfWeek = date.getDay();
             const isFixedDayOff = employee.fixedDayOff && dayOfWeek === fixedDayMapping[employee.fixedDayOff];
-            const dayIsActuallyHoliday = holidayCheckFn(date); // Use the passed holiday check function
+            const dayIsActuallyHoliday = holidayCheckFn(date);
 
             let entry: ScheduleEntry = newSchedule[key] || { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined };
 
             if (isFixedDayOff) {
-                if (entry.shift !== 'FF') {
+                if (entry.shift !== 'FF') { // Don't override FF if it's a fixed day off AND a holiday
                     entry = { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined };
                 }
             }
+            // Apply default role/shift only if not a fixed day off and not already FF
             else if (employee.defaultRole && employee.defaultShiftType && employee.defaultShiftType !== 'Nenhum' && entry.shift !== 'FF') {
                  entry.shift = 'TRABALHA';
                  entry.role = employee.defaultRole;
@@ -508,13 +531,14 @@ export function ShiftMasterApp() {
                          defaultHour = basicDefaultHour;
                      }
                  }
-                 if (!defaultHour && dayOptions.length > 0) {
+                 if (!defaultHour && dayOptions.length > 0) { // Fallback if specific default not found/applicable
                      defaultHour = dayOptions[0];
                  }
                  entry.baseHours = defaultHour;
-                 entry.holidayReason = undefined;
+                 entry.holidayReason = undefined; // Clear reason if now T
             }
 
+            // If it's a holiday and current status is FOLGA (and not a fixed day off that's already FOLGA), set to FF
             if (dayIsActuallyHoliday && entry.shift === 'FOLGA' && !isFixedDayOff) {
                 entry = { shift: 'FF', role: '', baseHours: '', holidayReason: 'Feriado' };
             }
@@ -549,23 +573,16 @@ export function ShiftMasterApp() {
 
         const success = await updateDataInFirestore(newEmployees, newSchedule, filters, holidays);
         if (!success) {
-           setEmployees(originalEmployees);
-           setSchedule(originalSchedule);
-            if (!isFirebaseConnected) {
-                toast({
-                    title: "Erro de Conexão",
-                    description: "Falha ao remover colaborador: Firebase não conectado. Salvo localmente.",
-                    variant: "destructive"
-                });
-            } else {
-                toast({
-                    title: "Erro no Servidor",
-                    description: "Falha ao remover colaborador no servidor. Salvo localmente.",
-                    variant: "destructive"
-                });
-            }
+           setEmployees(originalEmployees); // Revert
+           setSchedule(originalSchedule); // Revert
+            toast({
+                title: "Erro",
+                description: `Falha ao remover colaborador. ${!isFirebaseConnected ? "Firebase não conectado." : "Erro no servidor."} Mudanças salvas localmente.`,
+                variant: "destructive",
+                duration: toastDuration
+            });
         } else {
-            toast({ title: "Sucesso", description: "Colaborador removido e salvo no servidor." });
+            toast({ title: "Sucesso", description: "Colaborador removido.", duration: toastDuration });
         }
     }, [employeeToDelete, employees, schedule, filters, holidays, toast, updateDataInFirestore, isFirebaseConnected]);
 
@@ -574,7 +591,7 @@ export function ShiftMasterApp() {
 
     const handleShiftChange = useCallback(async (empId: number, date: Date, newShift: ShiftCode) => {
         const key = getScheduleKey(empId, date);
-        const currentScheduleState = {...schedule}; // Capture current state for revert
+        const currentScheduleState = {...schedule};
         const updatedSchedule = { ...currentScheduleState };
         const employee = employees.find(e => e.id === empId);
         const dayIsHoliday = isHolidayFn(date);
@@ -613,8 +630,8 @@ export function ShiftMasterApp() {
         updatedSchedule[key] = entry;
         setSchedule(updatedSchedule);
          if (!await updateDataInFirestore(employees, updatedSchedule, filters, holidays)) {
-            setSchedule(currentScheduleState);
-            toast({ title: "Erro", description: "Falha ao salvar alteração.", variant: "destructive" });
+            setSchedule(currentScheduleState); // Revert
+            toast({ title: "Erro", description: "Falha ao salvar alteração de turno.", variant: "destructive", duration: toastDuration });
         }
 
     }, [employees, schedule, holidays, filters, toast, updateDataInFirestore, isHolidayFn]);
@@ -622,16 +639,16 @@ export function ShiftMasterApp() {
 
     const handleDetailChange = useCallback(async (empId: number, date: Date, field: 'role' | 'baseHours' | 'holidayReason', value: string) => {
         const key = getScheduleKey(empId, date);
-        const currentScheduleState = {...schedule}; // Capture current state
+        const currentScheduleState = {...schedule};
         const updatedSchedule = { ...currentScheduleState };
 
-        if (!updatedSchedule[key]) {
+        if (!updatedSchedule[key]) { // Should not happen if initialized properly
             updatedSchedule[key] = { shift: 'TRABALHA', role: '', baseHours: '', holidayReason: undefined };
         } else if (updatedSchedule[key].shift !== 'TRABALHA' && (field === 'role' || field === 'baseHours')) {
-             toast({ title: "Aviso", description: "Função/Horário só se aplicam a dias de Trabalho (T).", variant: "default" });
+             toast({ title: "Aviso", description: "Função/Horário só se aplicam a dias de Trabalho (T).", variant: "default", duration: toastDuration });
              return;
         } else if (updatedSchedule[key].shift !== 'FF' && field === 'holidayReason') {
-             toast({ title: "Aviso", description: "Motivo só se aplica a Folga Feriado (FF).", variant: "default" });
+             toast({ title: "Aviso", description: "Motivo só se aplica a Folga Feriado (FF).", variant: "default", duration: toastDuration });
              return;
         }
 
@@ -639,13 +656,13 @@ export function ShiftMasterApp() {
         setSchedule(updatedSchedule);
 
          if (!await updateDataInFirestore(employees, updatedSchedule, filters, holidays)) {
-            setSchedule(currentScheduleState);
-             toast({ title: "Erro", description: "Falha ao salvar detalhe.", variant: "destructive" });
+            setSchedule(currentScheduleState); // Revert
+             toast({ title: "Erro", description: "Falha ao salvar detalhe do turno.", variant: "destructive", duration: toastDuration });
          }
     }, [employees, schedule, filters, holidays, toast, updateDataInFirestore]);
 
     const handleToggleHoliday = useCallback(async (date: Date) => {
-        if (!currentMonth) return; // Guard against null currentMonth
+        if (!currentMonth) return;
         const dateStart = startOfDay(date);
         const currentHolidays = [...holidays];
         const currentScheduleState = {...schedule};
@@ -669,11 +686,10 @@ export function ShiftMasterApp() {
                 }
             } else { // Day is no longer a holiday
                  if (entry && entry.shift === 'FF') {
-                     // Revert to default or fixed day off
                      if (isFixedDayOff) {
                          updatedSchedule[key] = { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined };
                      } else if (emp.defaultRole && emp.defaultShiftType && emp.defaultShiftType !== 'Nenhum') {
-                         const dayOptions = getTimeOptionsForDate(date, false); // false because it's no longer a holiday
+                         const dayOptions = getTimeOptionsForDate(date, false);
                          let defaultHour = '';
                           if (emp.defaultShiftType && emp.defaultShiftType !== 'Nenhum') {
                               const basicDefaultHour = shiftTypeToHoursMap[emp.defaultShiftType] || '';
@@ -685,7 +701,7 @@ export function ShiftMasterApp() {
                              defaultHour = dayOptions[0];
                           }
                          updatedSchedule[key] = { shift: 'TRABALHA', role: emp.defaultRole, baseHours: defaultHour, holidayReason: undefined };
-                     } else { // Default to FOLGA if no other defaults apply
+                     } else {
                          updatedSchedule[key] = { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined };
                      }
                  }
@@ -695,11 +711,11 @@ export function ShiftMasterApp() {
         setSchedule(updatedSchedule);
 
          if (!await updateDataInFirestore(employees, updatedSchedule, filters, updatedHolidays)) {
-            setHolidays(currentHolidays);
-            setSchedule(currentScheduleState);
-             toast({ title: "Erro", description: "Falha ao atualizar feriado.", variant: "destructive" });
+            setHolidays(currentHolidays); // Revert
+            setSchedule(currentScheduleState); // Revert
+             toast({ title: "Erro", description: "Falha ao atualizar feriado.", variant: "destructive", duration: toastDuration });
         } else {
-            toast({ title: "Feriado Atualizado", description: `Dia ${formatDate(date, 'dd/MM')} ${isCurrentlyHoliday ? 'não é mais' : 'agora é'} feriado.` });
+            toast({ title: "Feriado Atualizado", description: `Dia ${formatDate(date, 'dd/MM')} ${isCurrentlyHoliday ? 'não é mais' : 'agora é'} feriado.`, duration: toastDuration });
         }
 
     }, [holidays, employees, schedule, filters, toast, updateDataInFirestore, isHolidayFn, currentMonth]);
@@ -709,10 +725,11 @@ export function ShiftMasterApp() {
 
     const handleFilterChange = (newFilters: Partial<FilterState>) => {
         const updatedFilters = { ...filters, ...newFilters };
-        setFilters(updatedFilters);
-        if (newFilters.selectedDate) {
-          setCurrentMonth(startOfMonth(newFilters.selectedDate));
+        if (newFilters.selectedDate && !isEqual(startOfDay(newFilters.selectedDate), startOfDay(filters.selectedDate || new Date()))) {
+            updatedFilters.selectedDate = startOfDay(newFilters.selectedDate); // Normalize
         }
+        setFilters(updatedFilters);
+        // currentMonth update is handled by its own useEffect based on filters.selectedDate
     };
 
     const datesForTable = useMemo(() => {
@@ -742,12 +759,9 @@ export function ShiftMasterApp() {
 
     const confirmClearMonth = useCallback(async () => {
          if (!currentMonth) {
-            toast({ title: "Erro", description: "Mês atual não definido.", variant: "destructive" });
+            toast({ title: "Erro", description: "Mês atual não definido.", variant: "destructive", duration: toastDuration });
             setIsClearingMonth(false);
             return;
-         }
-         if (!(await checkAndInitializeFirebase()) || !db) {
-            toast({ title: "Aviso", description: "Firebase não disponível. Limpeza de mês não pôde ser salva no servidor.", variant: "warning" });
          }
 
         const currentScheduleState = {...schedule};
@@ -772,21 +786,22 @@ export function ShiftMasterApp() {
         setSchedule(updatedSchedule);
         setIsClearingMonth(false);
 
-         if (!await updateDataInFirestore(employees, updatedSchedule, filters, currentHolidays) && db) {
-            setSchedule(currentScheduleState);
-            toast({ title: "Erro", description: "Falha ao zerar escala no servidor. Mudanças salvas localmente.", variant: "destructive" });
+         if (!await updateDataInFirestore(employees, updatedSchedule, filters, currentHolidays)) {
+            setSchedule(currentScheduleState); // Revert
+            toast({ title: "Erro", description: "Falha ao zerar escala no servidor. Mudanças salvas localmente.", variant: "destructive", duration: toastDuration });
         } else {
-            toast({ title: "Sucesso", description: `Escala de ${formatDate(currentMonth, 'MMMM yyyy', { locale: ptBR })} zerada.` });
+            toast({ title: "Sucesso", description: `Escala de ${formatDate(currentMonth, 'MMMM yyyy', { locale: ptBR })} zerada.`, duration: toastDuration });
         }
-    }, [currentMonth, schedule, employees, holidays, toast, updateDataInFirestore, isHolidayFn, checkAndInitializeFirebase, db, filters]);
+    }, [currentMonth, schedule, employees, holidays, toast, updateDataInFirestore, isHolidayFn, filters]);
 
 
     // --- PDF and WhatsApp ---
 
     const generatePdf = async () => {
         if (!isClient || !currentMonth) return;
-        const jsPDF = (await import('jspdf')).default;
-        (await import('jspdf-autotable'));
+        const jsPDFModule = await import('jspdf');
+        const jsPDF = jsPDFModule.default; // Access the default export
+        await import('jspdf-autotable');
 
         const doc = new jsPDF({
             orientation: 'landscape',
@@ -824,16 +839,15 @@ export function ShiftMasterApp() {
                             textColor = [255, 255, 255];
                             fontStyle = 'bold';
                         }
-                    } else { // Should ideally not happen if schedule is initialized
+                    } else {
                         content = 'F';
-                        fillColor = '#f0f0f0'; // Muted (gray)
+                        fillColor = '#f0f0f0';
                         textColor = [100, 100, 100];
                     }
 
-                     // Override cell background for holidays if not FF itself
                      if (holiday && entry?.shift !== 'FF') {
-                         fillColor = '#e9d5ff'; // A light purple, adjust as needed
-                         textColor = [50,50,50]; // Darker text for contrast
+                         fillColor = '#e9d5ff';
+                         textColor = [50,50,50];
                      }
 
                     return { content, styles: { fillColor, textColor, fontStyle, fontSize: 5, cellPadding: 0.5, halign: 'center', valign: 'middle', minCellHeight: 6 } };
@@ -844,11 +858,10 @@ export function ShiftMasterApp() {
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageMargin = 10;
         const availableWidth = pageWidth - (pageMargin * 2);
-        const firstColWidth = 25; // For employee names
-        const actionsColWidth = 0; // Actions column not included in PDF
+        const firstColWidth = 25;
         const dateColCount = datesForTable.length;
-        const remainingWidth = availableWidth - firstColWidth - actionsColWidth;
-        const dateColWidth = Math.max(6, remainingWidth / dateColCount); // Ensure a minimum width
+        const remainingWidth = availableWidth - firstColWidth;
+        const dateColWidth = Math.max(6, remainingWidth / dateColCount);
 
         const columnStyles: { [key: number]: any } = {
             0: { cellWidth: firstColWidth, halign: 'left', fontStyle: 'bold', fontSize: 6, valign: 'middle' },
@@ -857,31 +870,12 @@ export function ShiftMasterApp() {
             columnStyles[i + 1] = { cellWidth: dateColWidth, halign: 'center', valign: 'middle', fontSize: 5 };
         }
 
-        // Custom drawing for header to handle holiday column highlighting
-        const drawHeader = (data: any) => {
-            const headerRow = data.table.head[0];
-            let xPos = data.cursor.x;
-            headerRow.cells.forEach((cell: any, index: number) => {
-                let isColHoliday = index > 0 && isHolidayFn(datesForTable[index - 1]);
-                doc.setFillColor(isColHoliday ? '#3498db' : '#2980b9'); // Primary for holiday, darker blue for others
-                doc.setTextColor(255);
-                doc.setFont(undefined, 'bold');
-                doc.rect(xPos, data.cursor.y, cell.width, cell.height, 'F');
-                doc.autoTableText(cell.text, xPos + cell.padding('left'), data.cursor.y + cell.height / 2, {
-                    halign: cell.styles.halign,
-                    valign: cell.styles.valign
-                });
-                xPos += cell.width;
-            });
-        };
-
-
-        (doc as any).autoTable({
+        doc.autoTable({ // Use jsPDF instance directly
             head: header,
             body: body,
             theme: 'grid',
              headStyles: {
-                 fillColor: '#2980b9', // Default header color (darker blue)
+                 fillColor: '#2980b9',
                  textColor: 255,
                  fontStyle: 'bold',
                  halign: 'center',
@@ -890,99 +884,90 @@ export function ShiftMasterApp() {
                  cellPadding: { top: 0.5, right: 0.5, bottom: 0.5, left: 0.5 },
                  lineColor: [200, 200, 200],
                  lineWidth: 0.1,
-                 // Use didDrawCell to customize individual header cells for holidays
                  didDrawCell: (data: any) => {
-                    if (data.section === 'head' && data.column.index > 0) { // Skip employee name column
-                         const dateIndex = data.column.index -1; // Adjust index for datesForTable array
+                    if (data.section === 'head' && data.column.index > 0) {
+                         const dateIndex = data.column.index -1;
                          if (dateIndex < datesForTable.length && isHolidayFn(datesForTable[dateIndex])) {
-                             doc.setFillColor('#3498db'); // Holiday header color (primary blue)
+                             doc.setFillColor('#3498db');
                              doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
-                             // Redraw text to ensure it's on top of the new fill
                              doc.setTextColor(255);
                              doc.setFont(undefined, 'bold');
-                             doc.autoTableText(data.cell.text, data.cell.x + data.cell.padding('left'), data.cell.y + data.cell.height / 2, {
-                                 halign: data.cell.styles.halign,
+                             doc.text(data.cell.text, data.cell.x + data.cell.padding('left'), data.cell.y + data.cell.height / 2, {
+                                 halign: data.cell.styles.halign as any, // Cast needed for jspdf type
                                  valign: data.cell.styles.valign
                              });
                          }
                     }
                  }
              },
-            styles: { // Default styles for body cells
+            styles: {
                  cellPadding: { top: 0.5, right: 0.2, bottom: 0.5, left: 0.2 },
                  fontSize: 5,
                  valign: 'middle',
                  halign: 'center',
                  lineWidth: 0.1,
                  lineColor: [200, 200, 200],
-                 minCellHeight: 6, // Minimum height for each cell
+                 minCellHeight: 6,
              },
             columnStyles: columnStyles,
-            margin: { top: 28, left: pageMargin, right: pageMargin, bottom: 15 }, // Margins for the page
+            margin: { top: 28, left: pageMargin, right: pageMargin, bottom: 15 },
             didDrawPage: (data: any) => {
-                // Page Title
                 doc.setFontSize(14);
-                 doc.setTextColor(40); // Dark gray for title
+                 doc.setTextColor(40);
                 doc.text('ShiftMaster - Escala de Trabalho', pageMargin, 15);
-                // Month/Year Subtitle
                  doc.setFontSize(10);
                 doc.text(`Mês: ${formatDate(currentMonth, 'MMMM yyyy', { locale: ptBR })}`, pageMargin, 22);
 
-                // Legend at the bottom
                 const pageHeight = doc.internal.pageSize.getHeight();
-                const startY = pageHeight - 12; // Start legend a bit higher
+                const startY = pageHeight - 12;
                  doc.setFontSize(8);
-                 doc.setTextColor(100); // Muted text color for legend
+                 doc.setTextColor(100);
                  doc.text("Legenda:", pageMargin, startY);
                  let currentX = pageMargin;
                  const legendY = startY + 4;
                  const rectSize = 3;
                  const textOffset = 4;
-                 const spacing = 15; // Base spacing, will adjust based on text width
+                 const spacing = 15;
 
-                 // Legend items
                  Object.entries(typeShiftCodeToDescription).forEach(([code, desc]) => {
-                     let fillColor: string | number[] = [255, 255, 255]; // Default white
-                     if (code === 'TRABALHA') fillColor = '#e74c3c'; // Destructive
-                     else if (code === 'FOLGA') fillColor = '#f0f0f0';   // Muted
-                     else if (code === 'FF') fillColor = '#2ecc71';    // Accent
+                     let fillColorArray: number[] = [255, 255, 255];
+                     if (code === 'TRABALHA') fillColorArray = [231, 76, 60]; // Red
+                     else if (code === 'FOLGA') fillColorArray = [240, 240, 240]; // Gray
+                     else if (code === 'FF') fillColorArray = [46, 204, 113]; // Green
 
-                     doc.setFillColor(...(Array.isArray(fillColor) ? fillColor : [255,0,0])); // Ensure RGB array
+                     doc.setFillColor(fillColorArray[0], fillColorArray[1], fillColorArray[2]);
                      doc.rect(currentX, legendY - rectSize / 2, rectSize, rectSize, 'F');
                      doc.setTextColor(100);
                      doc.text(`${code}: ${desc}`, currentX + textOffset, legendY);
-                     // Adjust currentX for next item based on text width
                      currentX += spacing + (doc.getTextWidth(`${code}: ${desc}`) / doc.internal.scaleFactor) + 2 ;
                  });
 
-                 // Legend for Holiday Column Highlight
-                 doc.setFillColor('#e9d5ff'); // Light purple for holiday column cell
+                 doc.setFillColor(233, 213, 255); // Light purple
                  doc.rect(currentX, legendY - rectSize / 2, rectSize, rectSize, 'F');
                  doc.setTextColor(100);
                  doc.text("Dia Feriado (Coluna)", currentX + textOffset, legendY);
-
             },
 
         });
 
 
         doc.save(`escala_${formatDate(currentMonth, 'yyyy-MM')}.pdf`);
-        toast({ title: "Sucesso", description: "PDF da escala gerado." });
+        toast({ title: "Sucesso", description: "PDF da escala gerado.", duration: toastDuration });
     };
 
 
     const generateDailyWhatsAppText = useCallback(() => {
         if (!filters.selectedDate) {
-            toast({ title: "Erro", description: "Selecione uma data para gerar o texto do WhatsApp.", variant: "destructive" });
+            toast({ title: "Erro", description: "Selecione uma data para gerar o texto do WhatsApp.", variant: "destructive", duration: toastDuration });
             return;
         }
         const holidayStatus = isHolidayFn(filters.selectedDate);
         const text = generateWhatsAppText(filters.selectedDate, filteredEmployees, schedule, holidayStatus, roleToEmojiMap);
         navigator.clipboard.writeText(text).then(() => {
-            toast({ title: "Sucesso", description: `Texto da escala de ${formatDate(filters.selectedDate as Date, 'dd/MM/yyyy', { locale: ptBR })} copiado.` });
+            toast({ title: "Sucesso", description: `Texto da escala de ${formatDate(filters.selectedDate as Date, 'dd/MM/yyyy', { locale: ptBR })} copiado.`, duration: toastDuration });
         }).catch(e => {
             console.error("Failed to copy WhatsApp text: ", e);
-            toast({ title: "Erro", description: "Falha ao copiar texto.", variant: "destructive" });
+            toast({ title: "Erro", description: "Falha ao copiar texto.", variant: "destructive", duration: toastDuration });
         });
     }, [filteredEmployees, schedule, filters.selectedDate, isHolidayFn, toast, roleToEmojiMap]);
 
@@ -997,10 +982,10 @@ export function ShiftMasterApp() {
     }, [isClient]);
 
 
-    if (!hasMounted || isLoading || !currentMonth || !filters.selectedDate) { // Check all critical states
+    if (!hasMounted || isLoading || !currentMonth || !filters.selectedDate || !initialLoadCompleted) {
          return (
            <div className="flex justify-center items-center h-screen">
-             <p>Inicializando e carregando dados...</p>
+             <p>Carregando dados...</p>
            </div>
          );
     }
@@ -1013,7 +998,7 @@ export function ShiftMasterApp() {
           onOpenChange={setEditOpen}
           employee={employeeToEdit}
           onSave={(employeeData) => {
-            if (!employeeData.id || employeeData.id === 0) { // Logic for new vs existing
+            if (!employeeData.id || employeeData.id === 0) {
               addEmployee(employeeData);
             } else {
               updateEmployee(employeeData);
@@ -1061,7 +1046,7 @@ export function ShiftMasterApp() {
               ShiftMaster
           </h1>
           <div className="flex items-center space-x-1 sm:space-x-4 flex-wrap gap-1 justify-center sm:justify-end">
-              <Button variant="outline" size="sm" onClick={() => loadDataFromFirestore("scheduleData")}><Icons.reload className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> Recarregar</Button>
+              <Button variant="outline" size="sm" onClick={loadInitialData}><Icons.reload className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> Recarregar</Button>
               <Button variant="outline" size="sm" onClick={generatePdf}><Icons.document className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> Gerar PDF (Mês)</Button>
               <Button variant="outline" size="sm" onClick={generateDailyWhatsAppText}><Icons.whatsapp className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> WhatsApp (Dia)</Button>
               <Button size="sm" onClick={() => {setEmployeeToEdit(null); setEditOpen(true)}}><Icons.userPlus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> Adicionar</Button>
@@ -1092,9 +1077,9 @@ export function ShiftMasterApp() {
         />
 
        <div className="flex justify-center items-center my-2 sm:my-4 space-x-2 sm:space-x-4">
-         <Button variant="outline" size="sm" onClick={() => currentMonth && setCurrentMonth(addDays(startOfMonth(currentMonth), -1))}>Mês Ant.</Button>
+         <Button variant="outline" size="sm" onClick={() => filters.selectedDate && handleFilterChange({ selectedDate: addDays(startOfMonth(filters.selectedDate), -1) })}>Mês Ant.</Button>
          <span className="text-base sm:text-lg font-semibold text-foreground whitespace-nowrap">{currentMonth ? formatDate(currentMonth, 'MMMM yyyy', { locale: ptBR }) : 'Carregando mês...'}</span>
-         <Button variant="outline" size="sm" onClick={() => currentMonth && setCurrentMonth(addDays(startOfMonth(currentMonth), 31))}>Próx. Mês</Button>
+         <Button variant="outline" size="sm" onClick={() => filters.selectedDate && handleFilterChange({ selectedDate: addDays(startOfMonth(filters.selectedDate), 31) })}>Próx. Mês</Button>
        </div>
 
         <div ref={tableContainerRef} className="flex-grow overflow-auto border rounded-lg shadow-md bg-card">
@@ -1125,3 +1110,4 @@ export function ShiftMasterApp() {
     </div>
   );
 }
+
