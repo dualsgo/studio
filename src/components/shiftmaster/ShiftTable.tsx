@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
@@ -6,9 +7,9 @@ import { ShiftCell } from './ShiftCell';
 import { getScheduleKey } from './utils';
 import { format as formatDate, isEqual, startOfDay, addDays } from 'date-fns'; // Renamed format to formatDate
 import { ptBR } from 'date-fns/locale';
-import { Table, TableBody, TableCell, TableHead, TableRow } from '@/components/ui/table';
-import { AlertTriangle } from 'lucide-react'; // Added CalendarX2 for FF
-import { Tooltip, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+import { Table, TableBody, TableCell, TableHead, TableRow, TableHeader } from '@/components/ui/table'; // Added TableHeader
+import { AlertTriangle, Edit, Trash2, CalendarPlus, CalendarMinus } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from '@/components/ui/button';
 import { shiftCodeToDescription, availableRoles } from './types'; // Import shiftCodeToDescription and availableRoles
 import { cn } from '@/lib/utils'; // Import cn
@@ -17,12 +18,13 @@ interface ShiftTableProps {
   employees: Employee[];
   schedule: ScheduleData;
   dates: Date[];
-  holidays: Date[]; // New prop for holidays
+  holidays: Date[];
   onShiftChange: (empId: number, date: Date, newShift: ShiftCode) => void;
   onDetailChange: (empId: number, date: Date, field: 'role' | 'baseHours' | 'holidayReason', value: string) => void;
   onEditEmployee: (employee: Employee) => void;
   onDeleteEmployee: (empId: number) => void;
-  onToggleHoliday: (date: Date) => void; // New callback for toggling holiday
+  onToggleHoliday: (date: Date) => void;
+  isHolidayFn: (date: Date) => boolean; // Add isHolidayFn to props
 }
 
 // Abbreviated day names for table header
@@ -34,20 +36,14 @@ export function ShiftTable({
   employees,
   schedule,
   dates,
-  holidays, // Use holidays prop
+  holidays,
   onShiftChange,
   onDetailChange,
   onEditEmployee,
   onDeleteEmployee,
-  onToggleHoliday, // Use toggle holiday callback
+  onToggleHoliday,
+  isHolidayFn, // Use isHolidayFn from props
 }: ShiftTableProps) {
-
-   // Helper to check if a date is a holiday
-   const isHoliday = useCallback((date: Date): boolean => {
-      if (!date || isNaN(date.getTime())) return false; // Basic check
-      const startOfDate = startOfDay(date);
-      return holidays.some(holiday => isEqual(holiday, startOfDate));
-   }, [holidays]);
 
     // Check for rule violations for visual feedback
     const checkViolations = useCallback((empId: number, date: Date): { consecutiveDays: boolean; consecutiveSundays: boolean; fixedDayOff: boolean } => {
@@ -122,20 +118,36 @@ export function ShiftTable({
                </TableHead>
               {/* Date Headers */}
               {dates.map(date => {
-                  const holidayStatus = isHoliday(date);
+                  const holidayStatus = isHolidayFn(date);
                   return (
                     <TableHead
                         key={date.toISOString()}
                         className={cn(
                             "p-1 border text-center font-semibold text-[10px] sm:text-xs leading-tight w-10 min-w-[40px] max-w-[50px]", // Adjust width
-                            holidayStatus ? "bg-primary/5" : "" // Highlight holiday header
+                            holidayStatus ? "bg-primary/10 ring-1 ring-primary/20" : "" // Highlight holiday header
                         )}
                     >
                         <div className="flex flex-col items-center justify-center">
-                            <span>{dayAbbreviations[date.getDay()]}</span>
-                            <span>{formatDate(date, 'dd', { locale: ptBR })}</span>
+                            <span className={cn(holidayStatus ? "text-primary font-bold" : "")}>{dayAbbreviations[date.getDay()]}</span>
+                            <span className={cn(holidayStatus ? "text-primary font-bold" : "")}>{formatDate(date, 'dd', { locale: ptBR })}</span>
                             {/* Holiday Toggle Button */}
-                            
+                            <TooltipProvider delayDuration={100}>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-4 w-4 p-0 mt-0.5"
+                                            onClick={() => onToggleHoliday(date)}
+                                        >
+                                            {holidayStatus ? <CalendarMinus className="h-3 w-3 text-destructive" /> : <CalendarPlus className="h-3 w-3 text-primary/70" />}
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="text-xs p-1">
+                                        {holidayStatus ? "Remover Feriado" : "Marcar Feriado"}
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
                         </div>
                     </TableHead>
                   );
@@ -146,7 +158,7 @@ export function ShiftTable({
           {employees.length === 0 ? (
              <TableRow>
                 <TableCell colSpan={dates.length + 2} className="text-center p-4 sm:p-8 text-muted-foreground">
-                    Nenhum colaborador encontrado.
+                    Nenhum colaborador encontrado. Adicione colaboradores para começar.
                 </TableCell>
             </TableRow>
           ) : (
@@ -159,46 +171,74 @@ export function ShiftTable({
                    {/* Sticky Actions Cell */}
                    <TableCell className="sticky left-[calc(100px+theme(spacing.px))] md:left-[calc(120px+theme(spacing.px))] z-10 bg-card group-hover:bg-muted/10 p-0.5 sm:p-1 border w-16 min-w-[64px] max-w-[64px] text-center">
                       <div className="flex flex-col sm:flex-row justify-center items-center space-y-0.5 sm:space-y-0 sm:space-x-0.5 h-full">
-                           
-                               <Button aria-label={`Editar ${emp.name}`} variant="ghost" size="icon" className="h-6 w-6 sm:h-7 sm:w-7" onClick={() => onEditEmployee(emp)}>
-                                   <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
-                               </Button>
-                               
-                          
-                               <Button aria-label={`Remover ${emp.name}`} variant="ghost" size="icon" className="h-6 w-6 sm:h-7 sm:w-7 text-destructive hover:text-destructive/90" onClick={() => onDeleteEmployee(emp.id)}>
-                                   <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
-                               </Button>
-                              
+                           <TooltipProvider delayDuration={100}>
+                               <Tooltip>
+                                   <TooltipTrigger asChild>
+                                       <Button aria-label={`Editar ${emp.name}`} variant="ghost" size="icon" className="h-6 w-6 sm:h-7 sm:w-7" onClick={() => onEditEmployee(emp)}>
+                                           <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
+                                       </Button>
+                                   </TooltipTrigger>
+                                   <TooltipContent side="top" className="text-xs p-1">Editar Colaborador</TooltipContent>
+                               </Tooltip>
+                           </TooltipProvider>
+                           <TooltipProvider delayDuration={100}>
+                               <Tooltip>
+                                   <TooltipTrigger asChild>
+                                       <Button aria-label={`Remover ${emp.name}`} variant="ghost" size="icon" className="h-6 w-6 sm:h-7 sm:w-7 text-destructive hover:text-destructive/90" onClick={() => onDeleteEmployee(emp.id)}>
+                                           <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                                       </Button>
+                                   </TooltipTrigger>
+                                   <TooltipContent side="top" className="text-xs p-1">Remover Colaborador</TooltipContent>
+                               </Tooltip>
+                           </TooltipProvider>
                       </div>
                   </TableCell>
 
                   {/* Schedule Cells */}
                   {dates.map(date => {
                     const key = getScheduleKey(emp.id, date);
-                    const cellData = schedule[key]; // Might be undefined
+                    const cellData = schedule[key];
                     const violations = checkViolations(emp.id, date);
-                    const holidayStatus = isHoliday(date);
+                    const holidayStatus = isHolidayFn(date); // Use isHolidayFn from props
 
-                    // Ensure we have a valid ScheduleEntry object or a default 'FOLGA'
                     const scheduleEntry: ScheduleEntry = cellData || { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined };
+                    const hasAnyViolation = violations.consecutiveDays || violations.consecutiveSundays || violations.fixedDayOff;
 
                     return (
-                      
-                          
-                              <ShiftCell
-                                shift={scheduleEntry.shift}
-                                role={scheduleEntry.role}
-                                baseHours={scheduleEntry.baseHours}
-                                holidayReason={scheduleEntry.holidayReason} // Pass reason
-                                date={date}
-                                availableRoles={availableRoles}
-                                isHoliday={holidayStatus} // Pass day's holiday status
-                                onChange={(newShift) => onShiftChange(emp.id, date, newShift)}
-                                onDetailChange={(field, value) => onDetailChange(emp.id, date, field, value)}
-                                hasViolation={hasViolation}
-                              />
-                        
-                      
+                      <TableCell key={key} className={cn("p-0 border relative h-12 min-h-[3rem] w-10 min-w-[40px] max-w-[50px]", holidayStatus && scheduleEntry.shift !== 'FF' ? "bg-primary/5" : "")}>
+                          <TooltipProvider delayDuration={hasAnyViolation ? 0 : 500}>
+                            <Tooltip open={hasAnyViolation ? undefined : false}> {/* Control tooltip visibility */}
+                              <TooltipTrigger asChild>
+                                <div> {/* Wrap ShiftCell for TooltipTrigger if it doesn't spread props */}
+                                  <ShiftCell
+                                    shift={scheduleEntry.shift}
+                                    role={scheduleEntry.role}
+                                    baseHours={scheduleEntry.baseHours}
+                                    holidayReason={scheduleEntry.holidayReason}
+                                    date={date}
+                                    availableRoles={availableRoles}
+                                    isHoliday={holidayStatus}
+                                    onChange={(newShift) => onShiftChange(emp.id, date, newShift)}
+                                    onDetailChange={(field, value) => onDetailChange(emp.id, date, field, value)}
+                                    hasViolation={hasAnyViolation && scheduleEntry.shift === 'TRABALHA'}
+                                  />
+                                </div>
+                              </TooltipTrigger>
+                              {hasAnyViolation && scheduleEntry.shift === 'TRABALHA' && (
+                                <TooltipContent side="bottom" className="text-xs p-1.5 bg-yellow-500 text-black max-w-xs">
+                                  <div className="flex items-center">
+                                    <AlertTriangle className="h-4 w-4 mr-1.5 text-black" />
+                                    <ul className="list-none p-0 m-0 space-y-0.5">
+                                      {violations.consecutiveDays && <li>Mais de 6 dias de trabalho consecutivos.</li>}
+                                      {violations.consecutiveSundays && <li>Mais de 3 domingos trabalhados consecutivos.</li>}
+                                      {violations.fixedDayOff && <li>Trabalhando na folga fixa ({employees.find(e => e.id === emp.id)?.fixedDayOff}).</li>}
+                                    </ul>
+                                  </div>
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          </TooltipProvider>
+                      </TableCell>
                     );
                   })}
                 </TableRow>
@@ -209,3 +249,6 @@ export function ShiftTable({
     </div>
   );
 }
+
+
+    

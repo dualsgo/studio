@@ -45,6 +45,23 @@ export const availableShiftCodes: ShiftCode[] = ['TRABALHA', 'FOLGA', 'FF'];
 // Moved from EditEmployeeDialog.tsx for broader use
 export const SELECT_NONE_VALUE = "--none--";
 
+// --- Constants ---
+export const daysOfWeek: DayOfWeek[] = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+export const availableShiftTypes: ShiftType[] = ['Abertura', 'Intermediário', 'Fechamento', 'Nenhum'];
+export const availableRoles: string[] = ['Vendas', 'Caixa', 'Estoque', 'Fiscal', 'Pacote', 'Organização', 'Outro'];
+
+export const roleToEmojiMap: Record<string, string> = {
+    'Vendas': '🔵',
+    'Caixa': '🔴',
+    'Estoque': '📦',
+    'Fiscal': '👮',
+    'Pacote': '🟢',
+    'Organização': '🟡',
+    'Outro': '⚪️',
+    // Add more roles and their emojis as needed
+};
+
+
 // --- Time Mappings (Updated Format: Xh às Yh) ---
 
 // Note: ShiftType (Abertura, etc.) is mainly used for *default* hour assignment.
@@ -78,3 +95,41 @@ export const holidayTimes = {
     'Abertura': ['12h às 18h', '13h às 19h'],
     'Fechamento': ['14h às 20h', '15h às 21h'],
 };
+
+// Function to get available time options based on date and holiday status
+export function getTimeOptionsForDate(date: Date, isHoliday: boolean): string[] {
+    const dayOfWeek = date.getDay(); // 0 for Sunday, 1 for Monday, etc.
+    let options: string[] = [];
+
+    if (isHoliday) {
+        options = [
+            ...Object.values(holidayTimes.Abertura),
+            ...Object.values(holidayTimes.Fechamento),
+        ];
+    } else {
+        switch (dayOfWeek) {
+            case 0: // Sunday
+                options = [
+                    ...Object.values(sundayTimes.Abertura),
+                    ...Object.values(sundayTimes.Fechamento),
+                ];
+                break;
+            case 5: // Friday
+            case 6: // Saturday
+                options = [
+                    ...Object.values(fridaySaturdayTimes.Abertura),
+                    ...Object.values(fridaySaturdayTimes.Fechamento),
+                ];
+                break;
+            default: // Monday to Thursday
+                options = [
+                    ...Object.values(mondayThursdayTimes.Abertura),
+                    ...Object.values(mondayThursdayTimes.Intermediário),
+                    ...Object.values(mondayThursdayTimes.Fechamento),
+                ];
+                break;
+        }
+    }
+    // Remove duplicates and sort (optional, but good for consistency)
+    return [...new Set(options)].sort();
+}
