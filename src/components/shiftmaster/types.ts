@@ -24,7 +24,7 @@ export type ScheduleData = Record<string, ScheduleEntry>;
 export interface FilterState {
   employee: string;
   role: string;
-  selectedDate: Date;
+  selectedDate: Date | null; // Allow null for initial state
 }
 
 // Define the possible states for a shift cell

@@ -107,11 +107,11 @@ const toastDuration = 3000;
 export function ShiftMasterApp() {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [schedule, setSchedule] = useState<ScheduleData>({});
-    const [currentMonth, setCurrentMonth] = useState<Date>(startOfMonth(new Date()));
+    const [currentMonth, setCurrentMonth] = useState<Date | null>(null);
     const [filters, setFilters] = useState<FilterState>({
         employee: '',
         role: '',
-        selectedDate: new Date(),
+        selectedDate: null,
     });
     const [editOpen, setEditOpen] = useState(false);
     const [employeeToEdit, setEmployeeToEdit] = useState<Employee | null>(null);
@@ -121,12 +121,47 @@ export function ShiftMasterApp() {
     const [holidays, setHolidays] = useState<Date[]>([]);
     const [showEasterEgg, setShowEasterEgg] = useState(false);
 
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(true); // For data fetching status
     const [isClearingMonth, setIsClearingMonth] = useState(false);
+    const [hasMounted, setHasMounted] = useState(false);
+
 
     const { toast } = useToast();
     const isClient = typeof window !== 'undefined';
     const tableContainerRef = useRef<HTMLDivElement>(null);
+
+    // Effect to set initial dates and mark as mounted (Client-side only)
+    useEffect(() => {
+      const now = new Date();
+      let initialSelectedDate = now;
+      let initialCurrentMonth = startOfMonth(now);
+
+      if (isClient) { // localStorage is only available on the client
+        const localDataString = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (localDataString) {
+          try {
+            const parsedLocalData = JSON.parse(localDataString);
+            if (parsedLocalData.filters?.selectedDate) {
+              const storedDate = parseISO(parsedLocalData.filters.selectedDate);
+              if (!isNaN(storedDate.getTime())) {
+                initialSelectedDate = storedDate;
+                initialCurrentMonth = startOfMonth(storedDate);
+              }
+            }
+          } catch (error) {
+            console.warn("Failed to parse dates from localStorage:", error);
+          }
+        }
+      }
+
+      setCurrentMonth(initialCurrentMonth);
+      setFilters(prevFilters => ({
+        ...prevFilters,
+        selectedDate: initialSelectedDate,
+      }));
+      setHasMounted(true);
+    }, [isClient]); // Runs once on client mount, re-runs if isClient changes (though it shouldn't post-mount)
+
 
     // --- Firebase/Data Handling ---
 
@@ -170,13 +205,17 @@ export function ShiftMasterApp() {
                 if (parsedData.employees && parsedData.schedule) {
                     setEmployees(parsedData.employees);
                     setSchedule(parsedData.schedule);
+                    const loadedSelectedDate = parsedData.filters?.selectedDate ? parseISO(parsedData.filters.selectedDate) : new Date();
                     setFilters({
                       employee: parsedData.filters?.employee ?? '',
                       role: parsedData.filters?.role ?? '',
-                      selectedDate: parsedData.filters?.selectedDate ? parseISO(parsedData.filters.selectedDate) : new Date()
+                      selectedDate: loadedSelectedDate
                     });
                     setHolidays((parsedData.holidays || []).map((isoString: string) => parseISO(isoString)));
-                    setCurrentMonth(startOfMonth(parsedData.filters?.selectedDate ? parseISO(parsedData.filters.selectedDate) : new Date()));
+                    // setCurrentMonth is handled by the main date initialization useEffect or when filters.selectedDate changes
+                    if (filters.selectedDate && !currentMonth) { // Ensure currentMonth is set if filters.selectedDate was loaded
+                         setCurrentMonth(startOfMonth(loadedSelectedDate));
+                    }
                     toast({ title: 'Dados Locais Carregados', description: 'Usando dados salvos localmente.', variant: 'default' });
                     return true;
                 }
@@ -186,15 +225,23 @@ export function ShiftMasterApp() {
             }
         }
         console.log("No valid local data found, generating initial data...");
-        const { initialEmployees, initialSchedule, initialFilters, initialHolidays } = generateInitialData();
-        setEmployees(initialEmployees);
-        setSchedule(initialSchedule);
-        setFilters(initialFilters);
-        setHolidays(initialHolidays);
-        setCurrentMonth(startOfMonth(initialFilters.selectedDate || new Date()));
-        saveDataToLocalStorage(initialEmployees, initialSchedule, initialFilters, initialHolidays);
+        // generateInitialData might rely on currentMonth being set, ensure it's available or passed
+        if(currentMonth) { // Only generate if currentMonth is set
+            const { initialEmployees, initialSchedule, initialFilters, initialHolidays } = generateInitialData(currentMonth);
+            setEmployees(initialEmployees);
+            setSchedule(initialSchedule);
+            // Ensure filters.selectedDate is also set, respecting generateInitialData's output
+            const genSelectedDate = initialFilters.selectedDate || new Date();
+            setFilters({
+                employee: initialFilters.employee,
+                role: initialFilters.role,
+                selectedDate: genSelectedDate
+            });
+            setHolidays(initialHolidays);
+            saveDataToLocalStorage(initialEmployees, initialSchedule, {...initialFilters, selectedDate: genSelectedDate}, initialHolidays);
+        }
         return false;
-    }, [isClient, toast, saveDataToLocalStorage]);
+    }, [isClient, toast, saveDataToLocalStorage, currentMonth, filters.selectedDate]); // Added currentMonth dependency
 
 
      // Update data in Firestore
@@ -239,10 +286,10 @@ export function ShiftMasterApp() {
 
     // Load data from Firestore
     const loadDataFromFirestore = useCallback(async (docId: string = "scheduleData") => {
-        setIsLoading(true); // Ensure loading state is true at the beginning
+        setIsLoading(true);
         if (!(await checkAndInitializeFirebase()) || !db) {
              console.log("Firebase not available. Loading from local storage.");
-             loadDataFromLocalStorage();
+             loadDataFromLocalStorage(); // This will set states
              setIsLoading(false);
              return;
         }
@@ -282,31 +329,42 @@ export function ShiftMasterApp() {
                             return startOfDay(new Date());
                         }
                     });
-
+                    
+                    const loadedSelectedDate = data.filters?.selectedDate ? parseISO(data.filters.selectedDate) : new Date();
                     const parsedFilters = {
                       employee: data.filters?.employee ?? '',
                       role: data.filters?.role ?? '',
-                      selectedDate: data.filters?.selectedDate ? parseISO(data.filters.selectedDate) : new Date()
+                      selectedDate: loadedSelectedDate
                     }
 
                     setEmployees(parsedEmployees);
                     setSchedule(parsedSchedule);
                     setHolidays(parsedHolidays);
                     setFilters(parsedFilters);
-                    setCurrentMonth(startOfMonth(parsedFilters.selectedDate || new Date()));
-
+                    // setCurrentMonth is handled by the main date initialization useEffect or when filters.selectedDate changes
+                    if (parsedFilters.selectedDate && !currentMonth) {
+                        setCurrentMonth(startOfMonth(parsedFilters.selectedDate));
+                    }
                     toast({ title: 'Sucesso', description: 'Dados carregados do Firestore!' });
                 }
             } else {
                 console.log("No such document! Initializing with default data.");
-                const { initialEmployees, initialSchedule, initialFilters, initialHolidays } = generateInitialData();
+                 // Ensure currentMonth is available for generateInitialData
+                const baseDateForInitialData = currentMonth || new Date();
+                const { initialEmployees, initialSchedule, initialFilters: genFilters, initialHolidays } = generateInitialData(baseDateForInitialData);
                 setEmployees(initialEmployees);
                 setSchedule(initialSchedule);
-                setFilters(initialFilters);
+                const initialSelectedDate = genFilters.selectedDate || new Date();
+                setFilters({
+                    employee: genFilters.employee,
+                    role: genFilters.role,
+                    selectedDate: initialSelectedDate,
+                });
                 setHolidays(initialHolidays);
-                setCurrentMonth(startOfMonth(initialFilters.selectedDate || new Date()));
-                await updateDataInFirestore(initialEmployees, initialSchedule, initialFilters, initialHolidays);
-
+                if (!currentMonth) { // Set currentMonth if it wasn't already (e.g., from initial load)
+                    setCurrentMonth(startOfMonth(initialSelectedDate));
+                }
+                await updateDataInFirestore(initialEmployees, initialSchedule, {...genFilters, selectedDate: initialSelectedDate}, initialHolidays);
                 toast({ title: 'Aviso', description: 'Nenhum dado encontrado. Iniciando com dados padrão.' });
             }
         } catch (error) {
@@ -322,21 +380,23 @@ export function ShiftMasterApp() {
         } finally {
             setIsLoading(false);
         }
-    }, [toast, checkAndInitializeFirebase, setIsFirebaseConnected, setIsLoading, loadDataFromLocalStorage, updateDataInFirestore]);
+    }, [toast, checkAndInitializeFirebase, setIsFirebaseConnected, setIsLoading, loadDataFromLocalStorage, updateDataInFirestore, currentMonth]);
 
 
     useEffect(() => {
-         if (!isClient) {
-             setIsLoading(false);
+         if (!isClient || !hasMounted || !currentMonth) { // Wait for client, mount, and currentMonth
+             if (!hasMounted) setIsLoading(true); // Keep loading if not mounted
+             else if (hasMounted && !currentMonth) setIsLoading(true); // Or if currentMonth isn't set yet
+             else setIsLoading(false);
              return;
          }
         loadDataFromFirestore("scheduleData");
-    }, [isClient, loadDataFromFirestore]);
+    }, [isClient, hasMounted, currentMonth, loadDataFromFirestore]); // Depend on currentMonth for initial load
 
     useEffect(() => {
-        if (isLoading) return; // Don't save while initial load is happening
+        if (isLoading || !hasMounted || !currentMonth) return; // Don't save while initial load is happening or not mounted/dates not set
         updateDataInFirestore(employees, schedule, filters, holidays);
-    }, [employees, schedule, filters, holidays, updateDataInFirestore, isLoading]);
+    }, [employees, schedule, filters, holidays, updateDataInFirestore, isLoading, hasMounted, currentMonth]);
 
 
     // --- Employee CRUD ---
@@ -376,6 +436,7 @@ export function ShiftMasterApp() {
     }, [holidays]);
 
    const updateEmployee = async (employeeData: Employee) => {
+        if (!currentMonth) return; // Guard against null currentMonth
         const originalEmployees = [...employees];
         const originalSchedule = {...schedule};
 
@@ -384,7 +445,7 @@ export function ShiftMasterApp() {
         );
         setEmployees(updatedEmployees);
 
-        const updatedSchedule = applyEmployeeDefaults(employeeData, originalSchedule, holidays, isHolidayFn);
+        const updatedSchedule = applyEmployeeDefaults(employeeData, originalSchedule, holidays, isHolidayFn, currentMonth);
         setSchedule(updatedSchedule);
 
         setEditOpen(false);
@@ -415,10 +476,11 @@ export function ShiftMasterApp() {
         employee: Employee,
         currentSchedule: ScheduleData,
         currentHolidays: Date[],
-        holidayCheckFn: (date: Date) => boolean // Pass isHolidayFn as an argument
+        holidayCheckFn: (date: Date) => boolean,
+        monthForContext: Date // Pass currentMonth explicitly
     ): ScheduleData => {
         const newSchedule = { ...currentSchedule };
-        const datesInMonth = getDatesInRange(startOfMonth(currentMonth), endOfMonth(currentMonth));
+        const datesInMonth = getDatesInRange(startOfMonth(monthForContext), endOfMonth(monthForContext));
         const fixedDayMapping: { [key in DayOfWeek]?: number } = {};
         daysOfWeek.forEach((day, index) => fixedDayMapping[day] = index);
 
@@ -583,6 +645,7 @@ export function ShiftMasterApp() {
     }, [employees, schedule, filters, holidays, toast, updateDataInFirestore]);
 
     const handleToggleHoliday = useCallback(async (date: Date) => {
+        if (!currentMonth) return; // Guard against null currentMonth
         const dateStart = startOfDay(date);
         const currentHolidays = [...holidays];
         const currentScheduleState = {...schedule};
@@ -600,16 +663,17 @@ export function ShiftMasterApp() {
             let entry = updatedSchedule[key];
              const isFixedDayOff = emp.fixedDayOff && date.getDay() === daysOfWeek.indexOf(emp.fixedDayOff);
 
-            if (!isCurrentlyHoliday) {
+            if (!isCurrentlyHoliday) { // Day is becoming a holiday
                 if (!isFixedDayOff && (!entry || entry.shift === 'TRABALHA' || entry.shift === 'FOLGA')) {
                      updatedSchedule[key] = { shift: 'FF', role: '', baseHours: '', holidayReason: 'Feriado' };
                 }
-            } else {
+            } else { // Day is no longer a holiday
                  if (entry && entry.shift === 'FF') {
+                     // Revert to default or fixed day off
                      if (isFixedDayOff) {
                          updatedSchedule[key] = { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined };
                      } else if (emp.defaultRole && emp.defaultShiftType && emp.defaultShiftType !== 'Nenhum') {
-                         const dayOptions = getTimeOptionsForDate(date, false);
+                         const dayOptions = getTimeOptionsForDate(date, false); // false because it's no longer a holiday
                          let defaultHour = '';
                           if (emp.defaultShiftType && emp.defaultShiftType !== 'Nenhum') {
                               const basicDefaultHour = shiftTypeToHoursMap[emp.defaultShiftType] || '';
@@ -621,7 +685,7 @@ export function ShiftMasterApp() {
                              defaultHour = dayOptions[0];
                           }
                          updatedSchedule[key] = { shift: 'TRABALHA', role: emp.defaultRole, baseHours: defaultHour, holidayReason: undefined };
-                     } else {
+                     } else { // Default to FOLGA if no other defaults apply
                          updatedSchedule[key] = { shift: 'FOLGA', role: '', baseHours: '', holidayReason: undefined };
                      }
                  }
@@ -638,7 +702,7 @@ export function ShiftMasterApp() {
             toast({ title: "Feriado Atualizado", description: `Dia ${formatDate(date, 'dd/MM')} ${isCurrentlyHoliday ? 'não é mais' : 'agora é'} feriado.` });
         }
 
-    }, [holidays, employees, schedule, filters, toast, updateDataInFirestore, isHolidayFn]);
+    }, [holidays, employees, schedule, filters, toast, updateDataInFirestore, isHolidayFn, currentMonth]);
 
 
     // --- UI Handlers ---
@@ -651,7 +715,10 @@ export function ShiftMasterApp() {
         }
     };
 
-    const datesForTable = useMemo(() => getDatesInRange(startOfMonth(currentMonth), endOfMonth(currentMonth)), [currentMonth]);
+    const datesForTable = useMemo(() => {
+        if (!currentMonth) return [];
+        return getDatesInRange(startOfMonth(currentMonth), endOfMonth(currentMonth));
+    }, [currentMonth]);
 
     const filteredEmployees = useMemo(() => {
         if (!employees) return [];
@@ -674,6 +741,11 @@ export function ShiftMasterApp() {
     }, []);
 
     const confirmClearMonth = useCallback(async () => {
+         if (!currentMonth) {
+            toast({ title: "Erro", description: "Mês atual não definido.", variant: "destructive" });
+            setIsClearingMonth(false);
+            return;
+         }
          if (!(await checkAndInitializeFirebase()) || !db) {
             toast({ title: "Aviso", description: "Firebase não disponível. Limpeza de mês não pôde ser salva no servidor.", variant: "warning" });
          }
@@ -712,7 +784,7 @@ export function ShiftMasterApp() {
     // --- PDF and WhatsApp ---
 
     const generatePdf = async () => {
-        if (!isClient) return;
+        if (!isClient || !currentMonth) return;
         const jsPDF = (await import('jspdf')).default;
         (await import('jspdf-autotable'));
 
@@ -739,28 +811,29 @@ export function ShiftMasterApp() {
                     if (entry) {
                         if (entry.shift === 'TRABALHA') {
                             content = `${entry.role ? entry.role.substring(0, 3).toUpperCase() : 'S/R'}\n${entry.baseHours ? entry.baseHours.replace(/\s*às\s*/, '-') : 'S/H'}`;
-                            fillColor = '#e74c3c';
+                            fillColor = '#e74c3c'; // Destructive (red)
                             textColor = [255, 255, 255];
                             fontStyle = 'bold';
                         } else if (entry.shift === 'FOLGA') {
                             content = 'F';
-                             fillColor = '#f0f0f0';
+                             fillColor = '#f0f0f0'; // Muted (gray)
                             textColor = [100, 100, 100];
                         } else if (entry.shift === 'FF') {
                             content = `FF${entry.holidayReason ? `\n(${entry.holidayReason.substring(0,5)})` : ''}`;
-                            fillColor = '#2ecc71';
+                            fillColor = '#2ecc71'; // Accent (green)
                             textColor = [255, 255, 255];
                             fontStyle = 'bold';
                         }
-                    } else {
+                    } else { // Should ideally not happen if schedule is initialized
                         content = 'F';
-                        fillColor = '#f0f0f0';
+                        fillColor = '#f0f0f0'; // Muted (gray)
                         textColor = [100, 100, 100];
                     }
 
+                     // Override cell background for holidays if not FF itself
                      if (holiday && entry?.shift !== 'FF') {
-                         fillColor = '#e9d5ff';
-                         textColor = [50,50,50];
+                         fillColor = '#e9d5ff'; // A light purple, adjust as needed
+                         textColor = [50,50,50]; // Darker text for contrast
                      }
 
                     return { content, styles: { fillColor, textColor, fontStyle, fontSize: 5, cellPadding: 0.5, halign: 'center', valign: 'middle', minCellHeight: 6 } };
@@ -771,11 +844,11 @@ export function ShiftMasterApp() {
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageMargin = 10;
         const availableWidth = pageWidth - (pageMargin * 2);
-        const firstColWidth = 25;
-        const actionsColWidth = 15;
+        const firstColWidth = 25; // For employee names
+        const actionsColWidth = 0; // Actions column not included in PDF
         const dateColCount = datesForTable.length;
         const remainingWidth = availableWidth - firstColWidth - actionsColWidth;
-        const dateColWidth = Math.max(8, remainingWidth / dateColCount);
+        const dateColWidth = Math.max(6, remainingWidth / dateColCount); // Ensure a minimum width
 
         const columnStyles: { [key: number]: any } = {
             0: { cellWidth: firstColWidth, halign: 'left', fontStyle: 'bold', fontSize: 6, valign: 'middle' },
@@ -784,12 +857,13 @@ export function ShiftMasterApp() {
             columnStyles[i + 1] = { cellWidth: dateColWidth, halign: 'center', valign: 'middle', fontSize: 5 };
         }
 
+        // Custom drawing for header to handle holiday column highlighting
         const drawHeader = (data: any) => {
             const headerRow = data.table.head[0];
             let xPos = data.cursor.x;
             headerRow.cells.forEach((cell: any, index: number) => {
                 let isColHoliday = index > 0 && isHolidayFn(datesForTable[index - 1]);
-                doc.setFillColor(isColHoliday ? '#3498db' : '#2980b9');
+                doc.setFillColor(isColHoliday ? '#3498db' : '#2980b9'); // Primary for holiday, darker blue for others
                 doc.setTextColor(255);
                 doc.setFont(undefined, 'bold');
                 doc.rect(xPos, data.cursor.y, cell.width, cell.height, 'F');
@@ -807,7 +881,7 @@ export function ShiftMasterApp() {
             body: body,
             theme: 'grid',
              headStyles: {
-                 fillColor: '#2980b9',
+                 fillColor: '#2980b9', // Default header color (darker blue)
                  textColor: 255,
                  fontStyle: 'bold',
                  halign: 'center',
@@ -816,12 +890,14 @@ export function ShiftMasterApp() {
                  cellPadding: { top: 0.5, right: 0.5, bottom: 0.5, left: 0.5 },
                  lineColor: [200, 200, 200],
                  lineWidth: 0.1,
+                 // Use didDrawCell to customize individual header cells for holidays
                  didDrawCell: (data: any) => {
-                    if (data.section === 'head' && data.column.index > 0) {
-                         const dateIndex = data.column.index -1;
+                    if (data.section === 'head' && data.column.index > 0) { // Skip employee name column
+                         const dateIndex = data.column.index -1; // Adjust index for datesForTable array
                          if (dateIndex < datesForTable.length && isHolidayFn(datesForTable[dateIndex])) {
-                             doc.setFillColor('#3498db');
+                             doc.setFillColor('#3498db'); // Holiday header color (primary blue)
                              doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+                             // Redraw text to ensure it's on top of the new fill
                              doc.setTextColor(255);
                              doc.setFont(undefined, 'bold');
                              doc.autoTableText(data.cell.text, data.cell.x + data.cell.padding('left'), data.cell.y + data.cell.height / 2, {
@@ -832,49 +908,55 @@ export function ShiftMasterApp() {
                     }
                  }
              },
-            styles: {
+            styles: { // Default styles for body cells
                  cellPadding: { top: 0.5, right: 0.2, bottom: 0.5, left: 0.2 },
                  fontSize: 5,
                  valign: 'middle',
                  halign: 'center',
                  lineWidth: 0.1,
                  lineColor: [200, 200, 200],
-                 minCellHeight: 6,
+                 minCellHeight: 6, // Minimum height for each cell
              },
             columnStyles: columnStyles,
-            margin: { top: 28, left: pageMargin, right: pageMargin, bottom: 15 },
+            margin: { top: 28, left: pageMargin, right: pageMargin, bottom: 15 }, // Margins for the page
             didDrawPage: (data: any) => {
+                // Page Title
                 doc.setFontSize(14);
-                 doc.setTextColor(40);
+                 doc.setTextColor(40); // Dark gray for title
                 doc.text('ShiftMaster - Escala de Trabalho', pageMargin, 15);
+                // Month/Year Subtitle
                  doc.setFontSize(10);
                 doc.text(`Mês: ${formatDate(currentMonth, 'MMMM yyyy', { locale: ptBR })}`, pageMargin, 22);
 
+                // Legend at the bottom
                 const pageHeight = doc.internal.pageSize.getHeight();
-                const startY = pageHeight - 12;
+                const startY = pageHeight - 12; // Start legend a bit higher
                  doc.setFontSize(8);
-                 doc.setTextColor(100);
+                 doc.setTextColor(100); // Muted text color for legend
                  doc.text("Legenda:", pageMargin, startY);
                  let currentX = pageMargin;
                  const legendY = startY + 4;
                  const rectSize = 3;
                  const textOffset = 4;
-                 const spacing = 15;
+                 const spacing = 15; // Base spacing, will adjust based on text width
 
+                 // Legend items
                  Object.entries(typeShiftCodeToDescription).forEach(([code, desc]) => {
-                     let fillColor: string | number[] = [255, 255, 255];
-                     if (code === 'TRABALHA') fillColor = '#e74c3c';
-                     else if (code === 'FOLGA') fillColor = '#f0f0f0';
-                     else if (code === 'FF') fillColor = '#2ecc71';
+                     let fillColor: string | number[] = [255, 255, 255]; // Default white
+                     if (code === 'TRABALHA') fillColor = '#e74c3c'; // Destructive
+                     else if (code === 'FOLGA') fillColor = '#f0f0f0';   // Muted
+                     else if (code === 'FF') fillColor = '#2ecc71';    // Accent
 
-                     doc.setFillColor(...(Array.isArray(fillColor) ? fillColor : [255,0,0]));
+                     doc.setFillColor(...(Array.isArray(fillColor) ? fillColor : [255,0,0])); // Ensure RGB array
                      doc.rect(currentX, legendY - rectSize / 2, rectSize, rectSize, 'F');
                      doc.setTextColor(100);
                      doc.text(`${code}: ${desc}`, currentX + textOffset, legendY);
+                     // Adjust currentX for next item based on text width
                      currentX += spacing + (doc.getTextWidth(`${code}: ${desc}`) / doc.internal.scaleFactor) + 2 ;
                  });
 
-                 doc.setFillColor('#e9d5ff');
+                 // Legend for Holiday Column Highlight
+                 doc.setFillColor('#e9d5ff'); // Light purple for holiday column cell
                  doc.rect(currentX, legendY - rectSize / 2, rectSize, rectSize, 'F');
                  doc.setTextColor(100);
                  doc.text("Dia Feriado (Coluna)", currentX + textOffset, legendY);
@@ -897,7 +979,7 @@ export function ShiftMasterApp() {
         const holidayStatus = isHolidayFn(filters.selectedDate);
         const text = generateWhatsAppText(filters.selectedDate, filteredEmployees, schedule, holidayStatus, roleToEmojiMap);
         navigator.clipboard.writeText(text).then(() => {
-            toast({ title: "Sucesso", description: `Texto da escala de ${formatDate(filters.selectedDate, 'dd/MM/yyyy', { locale: ptBR })} copiado.` });
+            toast({ title: "Sucesso", description: `Texto da escala de ${formatDate(filters.selectedDate as Date, 'dd/MM/yyyy', { locale: ptBR })} copiado.` });
         }).catch(e => {
             console.error("Failed to copy WhatsApp text: ", e);
             toast({ title: "Erro", description: "Falha ao copiar texto.", variant: "destructive" });
@@ -915,10 +997,10 @@ export function ShiftMasterApp() {
     }, [isClient]);
 
 
-    if (isLoading && isClient) {
+    if (!hasMounted || isLoading || !currentMonth || !filters.selectedDate) { // Check all critical states
          return (
            <div className="flex justify-center items-center h-screen">
-             <p>Carregando dados...</p>
+             <p>Inicializando e carregando dados...</p>
            </div>
          );
     }
@@ -931,7 +1013,7 @@ export function ShiftMasterApp() {
           onOpenChange={setEditOpen}
           employee={employeeToEdit}
           onSave={(employeeData) => {
-            if (!employeeData.id || employeeData.id === 0) {
+            if (!employeeData.id || employeeData.id === 0) { // Logic for new vs existing
               addEmployee(employeeData);
             } else {
               updateEmployee(employeeData);
@@ -961,7 +1043,7 @@ export function ShiftMasterApp() {
                 <AlertDialogHeader>
                     <AlertDialogTitle>Confirmar Zerar Escala</AlertDialogTitle>
                      <AlertDialogDescription>
-                         Tem certeza que deseja zerar a escala para o mês de {formatDate(currentMonth, 'MMMM yyyy', { locale: ptBR })}? Todos os dias para TODOS os colaboradores neste mês serão definidos como 'Folga' (F). Feriados marcados terão o status dos colaboradores alterados para 'Folga Feriado' (FF). Esta ação não pode ser desfeita.
+                         Tem certeza que deseja zerar a escala para o mês de {currentMonth ? formatDate(currentMonth, 'MMMM yyyy', { locale: ptBR }) : 'Mês Corrente'}? Todos os dias para TODOS os colaboradores neste mês serão definidos como 'Folga' (F). Feriados marcados terão o status dos colaboradores alterados para 'Folga Feriado' (FF). Esta ação não pode ser desfeita.
                      </AlertDialogDescription>
                  </AlertDialogHeader>
                  <AlertDialogFooter>
@@ -1010,9 +1092,9 @@ export function ShiftMasterApp() {
         />
 
        <div className="flex justify-center items-center my-2 sm:my-4 space-x-2 sm:space-x-4">
-         <Button variant="outline" size="sm" onClick={() => setCurrentMonth(addDays(startOfMonth(currentMonth), -1))}>Mês Ant.</Button>
-         <span className="text-base sm:text-lg font-semibold text-foreground whitespace-nowrap">{formatDate(currentMonth, 'MMMM yyyy', { locale: ptBR })}</span>
-         <Button variant="outline" size="sm" onClick={() => setCurrentMonth(addDays(startOfMonth(currentMonth), 31))}>Próx. Mês</Button>
+         <Button variant="outline" size="sm" onClick={() => currentMonth && setCurrentMonth(addDays(startOfMonth(currentMonth), -1))}>Mês Ant.</Button>
+         <span className="text-base sm:text-lg font-semibold text-foreground whitespace-nowrap">{currentMonth ? formatDate(currentMonth, 'MMMM yyyy', { locale: ptBR }) : 'Carregando mês...'}</span>
+         <Button variant="outline" size="sm" onClick={() => currentMonth && setCurrentMonth(addDays(startOfMonth(currentMonth), 31))}>Próx. Mês</Button>
        </div>
 
         <div ref={tableContainerRef} className="flex-grow overflow-auto border rounded-lg shadow-md bg-card">
@@ -1043,9 +1125,3 @@ export function ShiftMasterApp() {
     </div>
   );
 }
-
-const shiftCodeToDescription: Record<string, string> = {
-    "TRABALHA": "Trabalha",
-    "FOLGA": "Folga",
-    "FF": "Folga Feriado"
-};

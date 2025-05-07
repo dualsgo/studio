@@ -1,4 +1,3 @@
-
 'use client';
 
 import React from 'react';
@@ -44,7 +43,7 @@ export function ShiftFilters({
 
   // Get the start and end of the current month for the Calendar
   const currentMonthStart = startOfMonth(filters.selectedDate || new Date());
-  const currentMonthEnd = endOfMonth(filters.selectedDate || new Date());
+  // const currentMonthEnd = endOfMonth(filters.selectedDate || new Date());
 
 
   return (
@@ -97,6 +96,7 @@ export function ShiftFilters({
                         id="selected-date-filter"
                         variant={"outline"}
                         className="w-full justify-start text-left font-normal"
+                        disabled={!filters.selectedDate} // Disable if date is null
                     >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {filters.selectedDate ? format(filters.selectedDate, "PPP", { locale: ptBR }) : <span>Selecione data</span>}
@@ -105,10 +105,10 @@ export function ShiftFilters({
                     <PopoverContent className="w-auto p-0">
                     <Calendar
                         mode="single"
-                        selected={filters.selectedDate}
+                        selected={filters.selectedDate || undefined} // Pass undefined if null
                         onSelect={handleDateChange}
                         // Display the current month based on the selected date
-                        month={filters.selectedDate || new Date()}
+                        month={filters.selectedDate || new Date()} // Use new Date() as fallback
                         // Allow selecting any day within the displayed month
                         // Optional: Disable dates outside the current month if needed
                         // disabled={(date) => date < currentMonthStart || date > currentMonthEnd}
