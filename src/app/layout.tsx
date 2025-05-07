@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'ShiftMaster – Gerenciador de Escalas',
+  title: 'Escala Mensal – Gerenciador de Escalas', // Updated title
   description: 'Gerenciamento de escalas de trabalho fácil e intuitivo.',
 };
 
