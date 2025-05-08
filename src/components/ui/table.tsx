@@ -7,7 +7,6 @@ const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
 >(({ className, children, ...props }, ref) => (
-  // Ensure no leading/trailing space around the table tag
   <div className="relative w-full overflow-auto">
     <table
       ref={ref}
@@ -57,7 +56,6 @@ const TableRow = React.forwardRef<
   HTMLTableRowElement,
   React.HTMLAttributes<HTMLTableRowElement>
 >(({ className, children, ...props }, ref) => (
-  // Ensure no leading/trailing space around the children
   <tr
     ref={ref}
     className={cn(
@@ -76,7 +74,7 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+      "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=button]]:inline-flex [&>[role=button]]:items-center", // Added alignment for button
       className
     )}
     {...props}
@@ -118,4 +116,3 @@ export {
   TableCell,
   TableCaption,
 }
-

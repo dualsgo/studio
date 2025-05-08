@@ -3,6 +3,7 @@ import { ptBR } from 'date-fns/locale';
 
 export type ShiftType = 'Abertura' | 'Intermediário' | 'Fechamento' | 'Nenhum';
 export type DayOfWeek = "Domingo" | "Segunda" | "Terça" | "Quarta" | "Quinta" | "Sexta" | "Sábado";
+export type SortOrder = 'default' | 'asc' | 'desc'; // Add SortOrder type
 
 export interface Employee {
   id: number;

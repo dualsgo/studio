@@ -4,7 +4,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import HeadInformation from '@/components/HeadInformation'; // Default import
 import { cn } from '@/lib/utils';
-import type { Employee, ScheduleData, ShiftCode, DayOfWeek, ScheduleEntry, FilterState, ShiftType } from './types'; // Make sure ShiftType is imported
+import type { Employee, ScheduleData, ShiftCode, DayOfWeek, ScheduleEntry, FilterState, ShiftType, SortOrder } from './types'; // Make sure ShiftType and SortOrder are imported
 import { availableRoles, daysOfWeek, roleToEmojiMap, getTimeOptionsForDate, shiftTypeToHoursMap, SELECT_NONE_VALUE, availableShiftCodes, shiftCodeToDescription, getRoleStyles } from './types'; // Import helpers
 import { generateInitialData, getScheduleKey, generateWhatsAppText, getDatesInRange } from './utils'; // Import utils
 import { useToast } from "@/hooks/use-toast";
@@ -120,6 +120,7 @@ export function ShiftMasterApp() {
         role: '',
         selectedDate: null,
     });
+    const [sortOrder, setSortOrder] = useState<SortOrder>('default'); // Add sort order state
     const [editOpen, setEditOpen] = useState(false);
     const [employeeToEdit, setEmployeeToEdit] = useState<Employee | null>(null);
     const [employeeToDelete, setEmployeeToDelete] = useState<number | null>(null);
@@ -615,32 +616,53 @@ export function ShiftMasterApp() {
         // Filters are saved automatically by the persistence useEffect
     };
 
+    const handleSortChange = useCallback(() => {
+        setSortOrder(prevOrder => {
+            if (prevOrder === 'default') return 'asc';
+            if (prevOrder === 'asc') return 'desc';
+            return 'default';
+        });
+    }, []);
+
+
     const datesForTable = useMemo(() => {
         if (!currentMonth || isNaN(currentMonth.getTime())) return []; // Guard against invalid currentMonth
         return getDatesInRange(startOfMonth(currentMonth), endOfMonth(currentMonth));
     }, [currentMonth]);
 
-    const filteredEmployees = useMemo(() => {
+    const filteredAndSortedEmployees = useMemo(() => {
         if (!employees) return []; // Guard against null/undefined employees
-        return employees.filter(emp => {
-        // Filter by selected employee ID
-        if (filters.employee && emp.id !== parseInt(filters.employee)) return false;
 
-        // Filter by role (check if employee works *any* day with this role in the current view)
-        if (filters.role) {
-            // Ensure datesForTable is valid before trying to use it
-            if (!datesForTable || datesForTable.length === 0) return false; // Or handle appropriately
+        const filtered = employees.filter(emp => {
+            // Filter by selected employee ID
+            if (filters.employee && emp.id !== parseInt(filters.employee)) return false;
 
-            const worksInRole = datesForTable.some(date => {
-                const key = getScheduleKey(emp.id, date);
-                // Check schedule entry exists, shift is TRABALHA, and role matches
-                return schedule[key]?.shift === 'TRABALHA' && schedule[key]?.role === filters.role;
-            });
-            if (!worksInRole) return false; // Exclude if they don't work in the filtered role this month
-        }
-        return true; // Include if no filters applied or if filters match
+            // Filter by role (check if employee works *any* day with this role in the current view)
+            if (filters.role) {
+                // Ensure datesForTable is valid before trying to use it
+                if (!datesForTable || datesForTable.length === 0) return false; // Or handle appropriately
+
+                const worksInRole = datesForTable.some(date => {
+                    const key = getScheduleKey(emp.id, date);
+                    // Check schedule entry exists, shift is TRABALHA, and role matches
+                    return schedule[key]?.shift === 'TRABALHA' && schedule[key]?.role === filters.role;
+                });
+                if (!worksInRole) return false; // Exclude if they don't work in the filtered role this month
+            }
+            return true; // Include if no filters applied or if filters match
         });
-    }, [employees, filters, datesForTable, schedule]);
+
+        // Apply sorting
+        if (sortOrder === 'asc') {
+            return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+        } else if (sortOrder === 'desc') {
+            return [...filtered].sort((a, b) => b.name.localeCompare(a.name));
+        } else {
+            // 'default' order - maintain original order from state (usually by ID)
+            return filtered;
+        }
+
+    }, [employees, filters, datesForTable, schedule, sortOrder]);
 
 
     const handleClearMonth = useCallback(() => {
@@ -711,7 +733,7 @@ export function ShiftMasterApp() {
         const header = [['Colaborador', ...datesForTable.map(date => formatDate(date, 'E\ndd', { locale: ptBR }))]];
 
         // PDF Body Rows
-        const body = filteredEmployees.map(emp => {
+        const body = filteredAndSortedEmployees.map(emp => {
             return [
                 // Employee Name Cell
                 { content: emp.name, styles: { fontStyle: 'bold', fontSize: 6, cellPadding: 0.5 } },
@@ -792,10 +814,11 @@ export function ShiftMasterApp() {
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageMargin = 8;
         const availableWidth = pageWidth - (pageMargin * 2);
-        const firstColWidth = 20; // Width for employee names
+        const firstColWidth = 25; // Increased Width for employee names
+        const actionColWidth = 15; // Width for actions column (if included in PDF)
         const dateColCount = datesForTable.length;
-        const remainingWidth = availableWidth - firstColWidth;
-        const minDateColWidth = 4; // Minimum width for date columns
+        const remainingWidth = availableWidth - firstColWidth - actionColWidth; // Adjust if actions are included
+        const minDateColWidth = 6; // Slightly wider minimum width for date columns
         const calculatedDateColWidth = remainingWidth / dateColCount;
         const dateColWidth = Math.max(minDateColWidth, calculatedDateColWidth);
 
@@ -803,9 +826,13 @@ export function ShiftMasterApp() {
         // Define Column Styles
         const columnStyles: { [key: number]: any } = {
             0: { cellWidth: firstColWidth, halign: 'left', fontStyle: 'bold', fontSize: 6, valign: 'middle' }, // Employee name column
+            // Actions column (if needed, add here)
+            // Example: 1: { cellWidth: actionColWidth, ... }
         };
+        // Adjust index if actions column is added
+        const dateColStartIndex = 1; // Start date columns from index 1
         for (let i = 0; i < dateColCount; i++) {
-            columnStyles[i + 1] = { cellWidth: dateColWidth, halign: 'center', valign: 'middle', fontSize: 5 }; // Date columns
+            columnStyles[i + dateColStartIndex] = { cellWidth: dateColWidth, halign: 'center', valign: 'middle', fontSize: 5 }; // Date columns
         }
 
         // Draw the table
@@ -826,8 +853,8 @@ export function ShiftMasterApp() {
                  // Custom drawing logic for holiday headers
                  didDrawCell: (data: any) => {
                     // Check if it's a header cell and not the first column (Employee Name)
-                    if (data.section === 'head' && data.column.index > 0) {
-                         const dateIndex = data.column.index - 1; // Adjust index for dates array
+                    if (data.section === 'head' && data.column.index >= dateColStartIndex) { // Adjust index check
+                         const dateIndex = data.column.index - dateColStartIndex; // Adjust index for dates array
                          // Check if the corresponding date is a holiday
                          if (dateIndex < datesForTable.length && isHolidayFn(datesForTable[dateIndex])) {
                              // Draw a light purple background rectangle for holiday headers
@@ -930,7 +957,7 @@ export function ShiftMasterApp() {
             return;
         }
         const holidayStatus = isHolidayFn(filters.selectedDate);
-        const text = generateWhatsAppText(filters.selectedDate, filteredEmployees, schedule, holidayStatus, roleToEmojiMap);
+        const text = generateWhatsAppText(filters.selectedDate, filteredAndSortedEmployees, schedule, holidayStatus, roleToEmojiMap);
 
         // Use Clipboard API for better compatibility and user experience
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -956,7 +983,7 @@ export function ShiftMasterApp() {
                  toast({ title: "Erro", description: "Falha ao copiar texto (navegador incompatível?).", variant: "destructive", duration: toastDuration });
              }
         }
-    }, [filteredEmployees, schedule, filters.selectedDate, isHolidayFn, toast, roleToEmojiMap, isClient]);
+    }, [filteredAndSortedEmployees, schedule, filters.selectedDate, isHolidayFn, toast, roleToEmojiMap, isClient]);
 
     // ----- Backup and Restore Functions -----
     const handleSaveBackup = useCallback(() => {
@@ -1186,10 +1213,12 @@ export function ShiftMasterApp() {
 
         <div ref={tableContainerRef} className="flex-grow overflow-auto border rounded-lg shadow-md bg-card">
           <ShiftTable
-            employees={filteredEmployees}
+            employees={filteredAndSortedEmployees} // Use sorted employees
             schedule={schedule}
             dates={datesForTable}
             holidays={holidays}
+            sortOrder={sortOrder} // Pass sort order
+            onSortChange={handleSortChange} // Pass sort handler
             onShiftChange={handleShiftChange}
             onDetailChange={handleDetailChange}
              onEditEmployee={emp => {

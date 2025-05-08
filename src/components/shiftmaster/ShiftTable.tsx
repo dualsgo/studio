@@ -2,13 +2,13 @@
 'use client';
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import type { Employee, ScheduleData, ShiftCode, DayOfWeek, ScheduleEntry } from './types';
+import type { Employee, ScheduleData, ShiftCode, DayOfWeek, ScheduleEntry, SortOrder } from './types'; // Import SortOrder
 import { ShiftCell } from './ShiftCell';
 import { getScheduleKey } from './utils';
 import { format as formatDate, isEqual, startOfDay, addDays } from 'date-fns'; // Renamed format to formatDate
 import { ptBR } from 'date-fns/locale';
 import { Table, TableBody, TableCell, TableHead, TableRow, TableHeader } from '@/components/ui/table'; // Added TableHeader
-import { AlertTriangle, Edit, Trash2, CalendarPlus, CalendarMinus } from 'lucide-react';
+import { AlertTriangle, Edit, Trash2, CalendarPlus, CalendarMinus, ArrowUpDown } from 'lucide-react'; // Added ArrowUpDown
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from '@/components/ui/button';
 import { shiftCodeToDescription, availableRoles } from './types'; // Import shiftCodeToDescription and availableRoles
@@ -19,6 +19,8 @@ interface ShiftTableProps {
   schedule: ScheduleData;
   dates: Date[];
   holidays: Date[];
+  sortOrder: SortOrder; // Add sortOrder prop
+  onSortChange: () => void; // Add handler for sort change
   onShiftChange: (empId: number, date: Date, newShift: ShiftCode) => void;
   onDetailChange: (empId: number, date: Date, field: 'role' | 'baseHours' | 'holidayReason', value: string) => void;
   onEditEmployee: (employee: Employee) => void;
@@ -32,11 +34,20 @@ const dayAbbreviations: Record<number, string> = {
     0: 'DOM', 1: 'SEG', 2: 'TER', 3: 'QUA', 4: 'QUI', 5: 'SEX', 6: 'SÁB'
 };
 
+// Define minimum and maximum widths for columns
+const EMPLOYEE_COL_MIN_WIDTH = '120px'; // Wider employee column
+const ACTION_COL_WIDTH = '70px'; // Fixed width for actions
+const DATE_COL_MIN_WIDTH = '45px'; // Slightly wider minimum date cell width
+const DATE_COL_MAX_WIDTH = '60px'; // Maximum date cell width
+
+
 export function ShiftTable({
   employees,
   schedule,
   dates,
   holidays,
+  sortOrder, // Destructure sortOrder
+  onSortChange, // Destructure onSortChange
   onShiftChange,
   onDetailChange,
   onEditEmployee,
@@ -105,15 +116,37 @@ export function ShiftTable({
 
   return (
     <div className="relative overflow-x-auto w-full h-full">
-      <Table className="min-w-full border-collapse relative table-auto">
+      <Table className="min-w-full border-collapse relative table-fixed"> {/* Use table-fixed */}
+        <colgroup>
+          <col style={{ minWidth: EMPLOYEE_COL_MIN_WIDTH, width: EMPLOYEE_COL_MIN_WIDTH }} />
+          <col style={{ width: ACTION_COL_WIDTH }} />
+          {dates.map(date => (
+            <col key={date.toISOString()} style={{ minWidth: DATE_COL_MIN_WIDTH, maxWidth: DATE_COL_MAX_WIDTH }} />
+          ))}
+        </colgroup>
         <TableHeader className="sticky top-0 z-10 bg-card shadow-sm">
             <TableRow>
-              {/* Sticky Employee Name Header */}
-              <TableHead className="sticky left-0 z-20 bg-card p-1 sm:p-2 border text-xs sm:text-sm text-center font-semibold whitespace-nowrap w-auto min-w-[100px]">
-                Colaborador
+              {/* Sticky Employee Name Header with Sort Button */}
+              <TableHead
+                 className="sticky left-0 z-20 bg-card p-1 sm:p-2 border text-xs sm:text-sm text-center font-semibold whitespace-nowrap"
+                 style={{ minWidth: EMPLOYEE_COL_MIN_WIDTH, width: EMPLOYEE_COL_MIN_WIDTH }}
+              >
+                <div className="flex items-center justify-center">
+                    Colaborador
+                    <Button variant="ghost" size="icon" onClick={onSortChange} className="ml-1 h-5 w-5 p-0">
+                        <ArrowUpDown className="h-3 w-3" />
+                        <span className="sr-only">Ordenar por nome</span>
+                    </Button>
+                </div>
               </TableHead>
               {/* Sticky Actions Header */}
-               <TableHead className="sticky left-[calc(100px+theme(spacing.px))] md:left-[calc(120px+theme(spacing.px))] z-20 bg-card p-1 border w-16 min-w-[64px] max-w-[64px] text-center font-semibold text-xs sm:text-sm">
+               <TableHead
+                 className="sticky left-[var(--employee-col-width)] z-20 bg-card p-1 border text-center font-semibold text-xs sm:text-sm"
+                 style={{
+                   left: EMPLOYEE_COL_MIN_WIDTH, // Pin based on exact width
+                   width: ACTION_COL_WIDTH
+                 }}
+               >
                  Ações
                </TableHead>
               {/* Date Headers */}
@@ -123,9 +156,10 @@ export function ShiftTable({
                     <TableHead
                         key={date.toISOString()}
                         className={cn(
-                            "p-1 border text-center font-semibold text-[10px] sm:text-xs leading-tight w-10 min-w-[40px] max-w-[50px]", // Adjust width
+                            "p-1 border text-center font-semibold text-[10px] sm:text-xs leading-tight", // Base styles
                             holidayStatus ? "bg-primary/10 ring-1 ring-primary/20" : "" // Highlight holiday header
                         )}
+                        style={{ minWidth: DATE_COL_MIN_WIDTH, maxWidth: DATE_COL_MAX_WIDTH }} // Apply width styles
                     >
                         <div className="flex flex-col items-center justify-center">
                             <span className={cn(holidayStatus ? "text-primary font-bold" : "")}>{dayAbbreviations[date.getDay()]}</span>
@@ -165,11 +199,20 @@ export function ShiftTable({
             employees.map(emp => (
                 <TableRow key={emp.id} className="hover:bg-muted/10 group h-auto">
                   {/* Sticky Employee Name Cell */}
-                  <TableCell className="sticky left-0 z-10 bg-card group-hover:bg-muted/10 p-1 sm:p-2 border font-medium whitespace-nowrap text-xs sm:text-sm w-auto min-w-[100px]">
+                  <TableCell
+                    className="sticky left-0 z-10 bg-card group-hover:bg-muted/10 p-1 sm:p-2 border font-medium whitespace-nowrap text-xs sm:text-sm"
+                    style={{ minWidth: EMPLOYEE_COL_MIN_WIDTH, width: EMPLOYEE_COL_MIN_WIDTH }}
+                   >
                       {emp.name}
                   </TableCell>
                    {/* Sticky Actions Cell */}
-                   <TableCell className="sticky left-[calc(100px+theme(spacing.px))] md:left-[calc(120px+theme(spacing.px))] z-10 bg-card group-hover:bg-muted/10 p-0.5 sm:p-1 border w-16 min-w-[64px] max-w-[64px] text-center">
+                   <TableCell
+                     className="sticky left-[var(--employee-col-width)] z-10 bg-card group-hover:bg-muted/10 p-0.5 sm:p-1 border text-center"
+                     style={{
+                       left: EMPLOYEE_COL_MIN_WIDTH, // Pin based on exact width
+                       width: ACTION_COL_WIDTH
+                     }}
+                   >
                       <div className="flex flex-col sm:flex-row justify-center items-center space-y-0.5 sm:space-y-0 sm:space-x-0.5 h-full">
                            <TooltipProvider delayDuration={100}>
                                <Tooltip>
@@ -205,7 +248,14 @@ export function ShiftTable({
                     const hasAnyViolation = violations.consecutiveDays || violations.consecutiveSundays || violations.fixedDayOff;
 
                     return (
-                      <TableCell key={key} className={cn("p-0 border relative h-12 min-h-[3rem] w-10 min-w-[40px] max-w-[50px]", holidayStatus && scheduleEntry.shift !== 'FF' ? "bg-primary/5" : "")}>
+                      <TableCell
+                        key={key}
+                        className={cn(
+                            "p-0 border relative h-12 min-h-[3rem]", // Base cell styles
+                             holidayStatus && scheduleEntry.shift !== 'FF' ? "bg-primary/5" : ""
+                         )}
+                         style={{ minWidth: DATE_COL_MIN_WIDTH, maxWidth: DATE_COL_MAX_WIDTH }} // Apply width styles
+                         >
                           <TooltipProvider delayDuration={hasAnyViolation ? 0 : 500}>
                             <Tooltip open={hasAnyViolation ? undefined : false}> {/* Control tooltip visibility */}
                               <TooltipTrigger asChild>
@@ -249,6 +299,3 @@ export function ShiftTable({
     </div>
   );
 }
-
-
-    
