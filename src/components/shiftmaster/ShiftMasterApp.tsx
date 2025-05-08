@@ -1,10 +1,11 @@
+
 // src/components/shiftmaster/ShiftMasterApp.tsx
 'use client';
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import HeadInformation from '@/components/HeadInformation'; // Default import
 import { cn } from '@/lib/utils'; // Import cn
-import { db, app } from '@/lib/firebase'; // Import Firestore instance and app (though db/app might be null now)
+import { db, app } from '@/lib/firebase'; // Import Firestore instance and app
 // import { doc, setDoc, getDoc, collection, getDocs, writeBatch, deleteDoc, Timestamp, query, where } from 'firebase/firestore'; // Removed Firestore imports
 // import { getAuth } from 'firebase/auth'; // Uncomment if you need authentication
 import type { Employee, ScheduleData, ShiftCode, DayOfWeek, ScheduleEntry, FilterState, ShiftType, SortOrder } from './types'; // Make sure ShiftType and SortOrder are imported
@@ -1176,14 +1177,14 @@ export function ShiftMasterApp() {
     // ----- End Backup and Restore Functions -----
 
 
-    if (isLoading && isClient) { // Show loading indicator only on client after mount attempt
+    if (isLoading && !hasMounted) { // Adjusted loading state check
          return (
            <div className="flex justify-center items-center h-screen bg-background">
              <p className="text-foreground">Carregando dados...</p>
-             {/* Optionally add a spinner here */}
            </div>
          );
     }
+
 
   return (
     <div className="p-2 sm:p-4 flex flex-col h-screen bg-background">
@@ -1323,3 +1324,4 @@ export function ShiftMasterApp() {
     </div>
   );
 }
+
