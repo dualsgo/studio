@@ -37,7 +37,7 @@ const dayAbbreviations: Record<number, string> = {
 // Define minimum and maximum widths for columns
 const EMPLOYEE_COL_MIN_WIDTH = '120px'; // Wider employee column
 const ACTION_COL_WIDTH = '70px'; // Fixed width for actions
-const DATE_COL_MIN_WIDTH = '45px'; // Slightly wider minimum date cell width
+const DATE_COL_MIN_WIDTH = '55px'; // Increased minimum date cell width
 const DATE_COL_MAX_WIDTH = '60px'; // Maximum date cell width
 
 

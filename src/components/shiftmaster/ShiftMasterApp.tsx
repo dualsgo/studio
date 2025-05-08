@@ -814,11 +814,11 @@ export function ShiftMasterApp() {
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageMargin = 8;
         const availableWidth = pageWidth - (pageMargin * 2);
-        const firstColWidth = 25; // Increased Width for employee names
+        const firstColWidth = 20; // Reduced Width for employee names to give more space
         const actionColWidth = 15; // Width for actions column (if included in PDF)
         const dateColCount = datesForTable.length;
         const remainingWidth = availableWidth - firstColWidth - actionColWidth; // Adjust if actions are included
-        const minDateColWidth = 6; // Slightly wider minimum width for date columns
+        const minDateColWidth = 7; // Wider minimum width for date columns
         const calculatedDateColWidth = remainingWidth / dateColCount;
         const dateColWidth = Math.max(minDateColWidth, calculatedDateColWidth);
 
