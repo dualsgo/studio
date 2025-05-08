@@ -7,13 +7,12 @@ const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
 >(({ className, children, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
-    <table
-      ref={ref}
-      className={cn("w-full caption-bottom text-sm", className)}
-      {...props}
-    >{children}</table>
-  </div>
+  // Removed the wrapping div as it might interfere with sticky positioning in ShiftTable
+  <table
+    ref={ref}
+    className={cn("w-full caption-bottom text-sm", className)}
+    {...props}
+  >{/* Ensure no whitespace here */}{children}{/* Ensure no whitespace here */}</table>
 ))
 Table.displayName = "Table"
 
@@ -63,7 +62,7 @@ const TableRow = React.forwardRef<
       className
     )}
     {...props}
-  >{children}</tr>
+  >{/* Ensure no whitespace here */}{children}{/* Ensure no whitespace here */}</tr>
 ))
 TableRow.displayName = "TableRow"
 
@@ -116,3 +115,4 @@ export {
   TableCell,
   TableCaption,
 }
+

@@ -1211,6 +1211,7 @@ export function ShiftMasterApp() {
          <Button variant="outline" size="sm" onClick={() => filters.selectedDate && handleFilterChange({ selectedDate: addDays(startOfMonth(filters.selectedDate), 31) })} disabled={!filters.selectedDate}>Próx. Mês</Button>
        </div>
 
+       {/* Container div for the table with overflow */}
         <div ref={tableContainerRef} className="flex-grow overflow-auto border rounded-lg shadow-md bg-card">
           <ShiftTable
             employees={filteredAndSortedEmployees} // Use sorted employees

@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableRow, TableHeader } from '@
 import { AlertTriangle, Edit, Trash2, CalendarPlus, CalendarMinus, ArrowUpDown } from 'lucide-react'; // Added ArrowUpDown
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from '@/components/ui/button';
-import { shiftCodeToDescription, availableRoles } from './types'; // Import shiftCodeToDescription and availableRoles
+import { shiftCodeToDescription, availableRoles, getRoleStyles } from './types'; // Import helpers
 import { cn } from '@/lib/utils'; // Import cn
 
 interface ShiftTableProps {
@@ -115,7 +115,7 @@ export function ShiftTable({
 
 
   return (
-    <div className="relative overflow-x-auto w-full h-full">
+    // Removed the outer div, applying overflow directly to the container in ShiftMasterApp
       <Table className="min-w-full border-collapse relative table-fixed"> {/* Use table-fixed */}
         <colgroup>
           <col style={{ minWidth: EMPLOYEE_COL_MIN_WIDTH, width: EMPLOYEE_COL_MIN_WIDTH }} />
@@ -296,6 +296,7 @@ export function ShiftTable({
             )}
         </TableBody>
       </Table>
-    </div>
+    // </div> removed - container div moved to ShiftMasterApp
   );
 }
+
