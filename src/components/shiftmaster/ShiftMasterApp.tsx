@@ -5,7 +5,7 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import HeadInformation from '@/components/HeadInformation'; // Default import
 import { cn } from '@/lib/utils';
 import type { Employee, ScheduleData, ShiftCode, DayOfWeek, ScheduleEntry, FilterState, ShiftType } from './types'; // Make sure ShiftType is imported
-import { availableRoles, daysOfWeek, roleToEmojiMap, getTimeOptionsForDate, shiftTypeToHoursMap, SELECT_NONE_VALUE, availableShiftCodes, shiftCodeToDescription as typeShiftCodeToDescription } from './types'; // Correctly import from types
+import { availableRoles, daysOfWeek, roleToEmojiMap, getTimeOptionsForDate, shiftTypeToHoursMap, SELECT_NONE_VALUE, availableShiftCodes, shiftCodeToDescription, getRoleStyles } from './types'; // Import helpers
 import { generateInitialData, getScheduleKey, generateWhatsAppText, getDatesInRange } from './utils'; // Import utils
 import { useToast } from "@/hooks/use-toast";
 import { isBefore, parseISO, differenceInDays, addDays, format as formatDate, startOfMonth, endOfMonth, isEqual, startOfDay, parse } from 'date-fns'; // Renamed format to formatDate
@@ -82,7 +82,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable'; // Import autoTable plugin
 import { Toaster } from '@/components/ui/toaster'; // Import Toaster
 import { Icons } from "@/components/icons"; // Correct import path
-import { Save, Upload, RotateCcw, FileText, UserPlus } from 'lucide-react'; // Added Save and Upload
+import { Save, Upload, RotateCcw, FileText, UserPlus, WifiOff } from 'lucide-react'; // Added Save and Upload
 
 
 // Extend jsPDF interface for autoTable
@@ -296,6 +296,18 @@ export function ShiftMasterApp() {
     }, [employees, schedule, filters, holidays, saveDataToLocalStorage, isLoading, initialLoadCompleted, isClient, currentMonth]);
 
 
+     const isHolidayFn = useCallback((date: Date): boolean => {
+         if (!date || isNaN(date.getTime())) return false; // Guard against invalid dates
+         const dateStart = startOfDay(date);
+         return holidays.some(holiday => {
+             if (!holiday || !(holiday instanceof Date) || isNaN(holiday.getTime())) {
+                 console.warn("Invalid date found in holidays array:", holiday);
+                 return false;
+             }
+             return isEqual(startOfDay(holiday), dateStart);
+         });
+     }, [holidays]);
+
     const addEmployee = (employeeData: Employee) => {
         if (!isClient) return; // Ensure client-side
         const maxId = employees.reduce((max, emp) => Math.max(max, emp.id), 0);
@@ -314,17 +326,7 @@ export function ShiftMasterApp() {
         toast({ title: "Sucesso", description: "Colaborador adicionado.", duration: toastDuration });
     };
 
-    const isHolidayFn = useCallback((date: Date): boolean => {
-        if (!date || isNaN(date.getTime())) return false; // Guard against invalid dates
-        const dateStart = startOfDay(date);
-        return holidays.some(holiday => {
-            if (!holiday || !(holiday instanceof Date) || isNaN(holiday.getTime())) {
-                console.warn("Invalid date found in holidays array:", holiday);
-                return false;
-            }
-            return isEqual(startOfDay(holiday), dateStart);
-        });
-    }, [holidays]);
+
 
    const updateEmployee = (employeeData: Employee) => {
         if (!isClient || !currentMonth) return; // Ensure client-side and current month is set
@@ -719,28 +721,32 @@ export function ShiftMasterApp() {
                     const entry = schedule[key];
                     const holiday = isHolidayFn(date);
                     let content = '';
-                    let fillColor: string | number[] = [255, 255, 255]; // Default white background
+                    let fillColor: string | number[] | false = false; // Default: no explicit fill
                     let textColor: string | number[] = [0, 0, 0]; // Default black text
                     let fontStyle: 'normal' | 'bold' | 'italic' | 'bolditalic' = 'normal';
 
+                     const shiftDisplayText = entry ? shiftCodeToDescription[entry.shift] : shiftCodeToDescription['FOLGA'];
+
                     if (entry) {
+                        const roleStyles = getRoleStyles(entry.role); // Get role styles
                         switch (entry.shift) {
                             case 'TRABALHA':
                                 const roleDisplay = entry.role?.substring(0, 3).toUpperCase() || 'ERR';
                                 const hoursDisplay = entry.baseHours?.replace(/\s*às\s*/, '-') || 'S/H';
-                                content = `${roleDisplay}\n${hoursDisplay}`;
-                                fillColor = '#e74c3c'; // Red background for TRABALHA (destructive)
-                                textColor = [255, 255, 255]; // White text
+                                content = `${shiftDisplayText}\n${roleDisplay}\n${hoursDisplay}`;
+                                // Use role-specific colors
+                                fillColor = roleStyles.pdfFill;
+                                textColor = roleStyles.pdfText;
                                 fontStyle = 'bold';
                                 break;
                             case 'FOLGA':
-                                content = 'F';
+                                content = shiftDisplayText; // 'F'
                                 fillColor = '#f0f0f0'; // Light gray background for FOLGA (muted)
                                 textColor = [100, 100, 100]; // Dark gray text
                                 break;
                             case 'FF':
                                 const reasonDisplay = entry.holidayReason ? `\n(${entry.holidayReason.substring(0, 5)})` : '';
-                                content = `FF${reasonDisplay}`;
+                                content = `${shiftDisplayText}${reasonDisplay}`; // 'FF' + reason
                                 fillColor = '#2ecc71'; // Green background for FF (accent)
                                 textColor = [255, 255, 255]; // White text
                                 fontStyle = 'bold';
@@ -750,7 +756,7 @@ export function ShiftMasterApp() {
                         }
                     } else {
                         // Default to FOLGA style if no entry exists
-                        content = 'F';
+                        content = shiftDisplayText; // 'F'
                         fillColor = '#f0f0f0';
                         textColor = [100, 100, 100];
                     }
@@ -758,14 +764,17 @@ export function ShiftMasterApp() {
                     // Override fill color for holiday cells that aren't explicitly FF
                     // This highlights the day as a holiday even if someone is working
                     if (holiday && entry?.shift !== 'FF') {
-                        fillColor = '#e9d5ff'; // Light purple for holiday column highlight
-                        textColor = [50, 50, 50]; // Darker text for readability on purple
+                         // Only set fill if it's not already set by TRABALHA's role color
+                         if (fillColor === false) {
+                            fillColor = '#e9d5ff'; // Light purple for holiday column highlight
+                            textColor = [50, 50, 50]; // Darker text for readability on purple
+                         }
                     }
 
                     return {
                         content,
                         styles: {
-                            fillColor,
+                            fillColor: fillColor === false ? undefined : fillColor, // Don't pass false to jspdf
                             textColor,
                             fontStyle,
                             fontSize: 5,
@@ -868,20 +877,35 @@ export function ShiftMasterApp() {
                  const textOffset = 3;
                  const spacing = 12; // Spacing between legend items
 
-                 // Add legend items dynamically based on availableShiftCodes
-                 availableShiftCodes.forEach(code => {
+                 // Legend for Shift Codes (T, F, FF)
+                 const shiftCodesForLegend: ShiftCode[] = ['TRABALHA', 'FOLGA', 'FF'];
+                 shiftCodesForLegend.forEach(code => {
                      let fillColorArray: number[] = [255, 255, 255]; // Default white
-                     if (code === 'TRABALHA') fillColorArray = [231, 76, 60];   // Red
-                     else if (code === 'FOLGA') fillColorArray = [240, 240, 240]; // Gray
-                     else if (code === 'FF') fillColorArray = [46, 204, 113]; // Green
+                     let textColorArray: number[] = [0, 0, 0];     // Default black
+                     let description = '';
+
+                     if (code === 'TRABALHA') {
+                        fillColorArray = [200, 200, 200]; // Generic gray for 'T' in legend
+                        textColorArray = [0, 0, 0];
+                        description = 'Trabalha (Cor varia por Função)';
+                     } else if (code === 'FOLGA') {
+                        fillColorArray = [240, 240, 240]; // Gray
+                        textColorArray = [100, 100, 100];
+                        description = 'Folga';
+                     } else if (code === 'FF') {
+                        fillColorArray = [46, 204, 113]; // Green
+                        textColorArray = [255, 255, 255];
+                        description = 'Folga Feriado';
+                      }
 
                      doc.setFillColor(fillColorArray[0], fillColorArray[1], fillColorArray[2]);
                      doc.rect(currentX, legendY - rectSize / 2, rectSize, rectSize, 'F');
-                     doc.setTextColor(100); // Gray text for legend
-                     const legendText = `${code}: ${typeShiftCodeToDescription[code]}`;
+                     doc.setTextColor(100); // Gray text for legend label
+                     const legendText = `${shiftCodeToDescription[code]}: ${description}`; // Use abbreviation
                      doc.text(legendText, currentX + textOffset, legendY, { baseline: 'middle' });
                      currentX += textOffset + doc.getTextWidth(legendText) + spacing;
                  });
+
 
                  // Add legend item for Holiday Column Highlight
                  doc.setFillColor(168, 85, 247); // Purple color used for header highlight
@@ -1130,6 +1154,20 @@ export function ShiftMasterApp() {
               <Button variant="outline" size="sm" onClick={generateDailyWhatsAppText}><Icons.whatsapp className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> WhatsApp (Dia)</Button>
               <Button size="sm" onClick={() => {setEmployeeToEdit(null); setEditOpen(true)}}><UserPlus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> Adicionar</Button>
               <Button variant="destructive" size="sm" onClick={handleClearMonth}><RotateCcw className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4"/> Zerar Mês</Button>
+
+              {/* Firebase Status Indicator - Kept for reference, but functionality removed */}
+             {/* {!isFirebaseConnected && (
+                 <TooltipProvider delayDuration={100}>
+                     <Tooltip>
+                         <TooltipTrigger asChild>
+                             <WifiOff className="h-5 w-5 text-destructive" />
+                         </TooltipTrigger>
+                         <TooltipContent>
+                             <p>Erro: Não foi possível conectar ao Firebase. Os dados não serão salvos online.</p>
+                         </TooltipContent>
+                     </Tooltip>
+                 </TooltipProvider>
+             )} */}
            </div>
          </div>
 

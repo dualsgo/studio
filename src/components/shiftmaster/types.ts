@@ -30,11 +30,11 @@ export interface FilterState {
 // Define the possible states for a shift cell
 export type ShiftCode = 'TRABALHA' | 'FOLGA' | 'FF'; // Trabalha, Folga, Folga Feriado
 
-// Define descriptions for each shift code for legends/tooltips
+// Define descriptions (abbreviations) for each shift code for display
 export const shiftCodeToDescription: Record<ShiftCode, string> = {
-  TRABALHA: 'Trabalha',
-  FOLGA: 'Folga',
-  FF: 'Folga Feriado',
+  TRABALHA: 'T',
+  FOLGA: 'F',
+  FF: 'FF',
 };
 
 // Define the available shift codes that can be cycled or assigned
@@ -42,7 +42,6 @@ export const shiftCodeToDescription: Record<ShiftCode, string> = {
 export const availableShiftCodes: ShiftCode[] = ['TRABALHA', 'FOLGA', 'FF'];
 
 // Define a unique, non-empty value for "None" options in Select
-// Moved from EditEmployeeDialog.tsx for broader use
 export const SELECT_NONE_VALUE = "--none--";
 
 // --- Constants ---
@@ -51,15 +50,35 @@ export const availableShiftTypes: ShiftType[] = ['Abertura', 'Intermediário', '
 export const availableRoles: string[] = ['Vendas', 'Caixa', 'Estoque', 'Fiscal', 'Pacote', 'Organização', 'Outro'];
 
 export const roleToEmojiMap: Record<string, string> = {
-    'Vendas': '🔵',
-    'Caixa': '🔴',
-    'Estoque': '📦',
-    'Fiscal': '👮',
-    'Pacote': '🟢',
-    'Organização': '🟡',
-    'Outro': '⚪️',
+    'Vendas': '🔵', // Blue
+    'Caixa': '🔴', // Red
+    'Estoque': '🟢', // Green
+    'Fiscal': '🟡', // Yellow
+    'Pacote': '🟣', // Purple
+    'Organização': '🟠', // Orange
+    'Outro': '⚪️', // White/Gray
     // Add more roles and their emojis as needed
 };
+
+// Color mapping for roles (Tailwind classes and Hex for PDF)
+// Using theme variables where possible for consistency
+export const roleToColorStyles: Record<string, { bgClass: string; textClass: string; pdfFill: string; pdfText: string }> = {
+    'Vendas':      { bgClass: 'bg-primary',       textClass: 'text-primary-foreground',    pdfFill: '#3498db', pdfText: '#ffffff' }, // Primary (Blue)
+    'Caixa':       { bgClass: 'bg-destructive',   textClass: 'text-destructive-foreground', pdfFill: '#e74c3c', pdfText: '#ffffff' }, // Destructive (Red)
+    'Estoque':     { bgClass: 'bg-[hsl(var(--chart-2))]', textClass: 'text-white',               pdfFill: '#1abc9c', pdfText: '#ffffff' }, // Chart 2 (Teal/Green) - Assume white text
+    'Fiscal':      { bgClass: 'bg-[hsl(var(--chart-4))]', textClass: 'text-black',               pdfFill: '#f1c40f', pdfText: '#000000' }, // Chart 4 (Yellow) - Black text
+    'Pacote':      { bgClass: 'bg-purple-500',    textClass: 'text-white',                  pdfFill: '#9b59b6', pdfText: '#ffffff' }, // Purple (Needs theme variable or explicit color)
+    'Organização': { bgClass: 'bg-[hsl(var(--chart-5))]', textClass: 'text-white',               pdfFill: '#e67e22', pdfText: '#ffffff' }, // Chart 5 (Orange) - Assume white text
+    'Outro':       { bgClass: 'bg-muted',         textClass: 'text-muted-foreground',       pdfFill: '#f0f0f0', pdfText: '#555555' }, // Muted (Gray) - Muted text
+    // Fallback/Default style if role is not found
+    'DEFAULT':     { bgClass: 'bg-background',    textClass: 'text-foreground',           pdfFill: '#ffffff', pdfText: '#000000' },
+};
+
+// Function to get styles for a given role, providing fallback
+export function getRoleStyles(role: string | undefined | null): { bgClass: string; textClass: string; pdfFill: string; pdfText: string } {
+    const validRole = role && availableRoles.includes(role) ? role : 'Outro'; // Default to 'Outro' if invalid/null
+    return roleToColorStyles[validRole] || roleToColorStyles['DEFAULT'];
+}
 
 
 // --- Time Mappings (Updated Format: Xh às Yh) ---

@@ -6,32 +6,25 @@ import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Clock, Briefcase, Edit2, CalendarX2 } from 'lucide-react'; // Added CalendarX2 for FF
+import { Clock, Briefcase, Edit2, CalendarX2 } from 'lucide-react';
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input"; // Added Input for holiday reason
+import { Input } from "@/components/ui/input";
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { getTimeOptionsForDate, shiftCodeToDescription, availableShiftCodes } from './types'; // Import updated function and descriptions
+import { getTimeOptionsForDate, shiftCodeToDescription, availableShiftCodes, getRoleStyles } from './types'; // Import helpers
 
 interface ShiftCellProps {
   shift: ShiftCode;
   role: string;
   baseHours: string;
-  holidayReason?: string; // New optional prop
+  holidayReason?: string;
   date: Date;
   availableRoles: string[];
-  isHoliday: boolean; // Indicates if the *day itself* is a holiday
+  isHoliday: boolean;
   onChange: (newShift: ShiftCode) => void;
   onDetailChange: (field: 'role' | 'baseHours' | 'holidayReason', value: string) => void;
   hasViolation: boolean;
 }
-
-// Updated styles including FF
-const shiftStyles: Record<ShiftCode, string> = {
-  TRABALHA: 'bg-destructive text-destructive-foreground', // Red
-  FOLGA: 'bg-muted text-muted-foreground',           // Gray
-  FF: 'bg-accent text-accent-foreground',        // Green (for Folga Feriado)
-};
 
 // Only cycle T and F on simple click
 const shiftCycle: ShiftCode[] = ['TRABALHA', 'FOLGA'];
@@ -162,13 +155,30 @@ export function ShiftCell({
        setPopoverHolidayReason(event.target.value);
    };
 
-
+  // Get display text (abbreviation)
   const getShiftDisplayText = (code: ShiftCode): string => {
       return shiftCodeToDescription[code];
   };
 
+  // Determine dynamic styles based on shift and role
+  const roleStyles = getRoleStyles(role);
+  const cellStyles = useMemo(() => {
+    switch (shift) {
+      case 'TRABALHA':
+        return `${roleStyles.bgClass} ${roleStyles.textClass}`;
+      case 'FOLGA':
+        return 'bg-muted text-muted-foreground';
+      case 'FF':
+        return 'bg-accent text-accent-foreground';
+      default:
+        return 'bg-background text-foreground'; // Fallback
+    }
+  }, [shift, roleStyles]);
+
+
   const cellTitle = `Dia: ${format(date, 'dd/MM')} - ${shiftCodeToDescription[shift]}${shift === 'FF' && holidayReason ? ` (${holidayReason})` : ''}
-Clique: ${shift === 'TRABALHA' || shift === 'FOLGA' ? 'Alternar TRABALHA/FOLGA' : 'Nada'}
+${shift === 'TRABALHA' ? `Função: ${role || 'N/A'}, Horário: ${baseHours || 'N/A'}` : ''}
+Clique: ${shift === 'TRABALHA' || shift === 'FOLGA' ? 'Alternar T/F' : 'Nada'}
 Shift/Ctrl/Direito: Detalhes/Mudar Turno`;
 
   return (
@@ -177,7 +187,7 @@ Shift/Ctrl/Direito: Detalhes/Mudar Turno`;
         <button
           className={cn(
             'w-full h-full flex flex-col items-center justify-center text-xs p-0.5 sm:p-1 select-none relative transition-colors duration-150 ease-in-out group focus:outline-none focus:ring-1 focus:ring-ring focus:z-10',
-            shiftStyles[shift],
+            cellStyles, // Apply dynamic styles
             isHoliday ? 'border border-dashed border-primary/50' : '',
             // Violation ring only for 'T' shifts
             hasViolation && shift === 'TRABALHA' ? 'ring-1 sm:ring-2 ring-offset-1 ring-yellow-500' : '',
@@ -193,7 +203,7 @@ Shift/Ctrl/Direito: Detalhes/Mudar Turno`;
           }}
           title={cellTitle} // Use dynamic title
         >
-          {/* Display Shift Code */}
+          {/* Display Shift Code (Abbreviation) */}
           <span className="font-semibold text-xs sm:text-sm pointer-events-none">{getShiftDisplayText(shift)}</span>
 
           {/* Display role and hours ONLY if shift is 'T' */}
@@ -211,11 +221,10 @@ Shift/Ctrl/Direito: Detalhes/Mudar Turno`;
           {/* Edit icon visible for all shifts, triggers popover */}
           <div
             data-edit-icon="true"
-            // onClick={handleOpenPopover} // Triggered by parent button's Shift/Ctrl/Right click now
             className="absolute bottom-0 right-0 p-0.5 rounded-sm hover:bg-black/10 dark:hover:bg-white/10 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
             aria-label="Editar detalhes/turno"
             role="button"
-            tabIndex={-1} // Not directly focusable, parent button handles focus/keyboard
+            tabIndex={-1}
           >
             <Edit2 className="h-2 w-2 sm:h-2.5 sm:w-2.5 opacity-50 group-hover:opacity-100 pointer-events-none" />
           </div>
@@ -237,7 +246,7 @@ Shift/Ctrl/Direito: Detalhes/Mudar Turno`;
                   <SelectContent>
                       {availableShiftCodes.map(code => (
                           <SelectItem key={`shift-opt-${code}`} value={code} className="text-xs">
-                              {shiftCodeToDescription[code]}
+                              {shiftCodeToDescription[code]} {/* Show abbreviation */}
                           </SelectItem>
                       ))}
                   </SelectContent>
