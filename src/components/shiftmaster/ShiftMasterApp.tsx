@@ -3,7 +3,11 @@
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import HeadInformation from '@/components/HeadInformation'; // Default import
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/utils'; // Import cn
+// Firebase integration removed - using local storage only
+// import { db, app } from '@/lib/firebase'; // Import Firestore instance and app
+// import { doc, setDoc, getDoc, collection, getDocs, writeBatch, deleteDoc, Timestamp, query, where } from 'firebase/firestore';
+// import { getAuth } from 'firebase/auth'; // Uncomment if you need authentication
 import type { Employee, ScheduleData, ShiftCode, DayOfWeek, ScheduleEntry, FilterState, ShiftType, SortOrder } from './types'; // Make sure ShiftType and SortOrder are imported
 import { availableRoles, daysOfWeek, roleToEmojiMap, getTimeOptionsForDate, shiftTypeToHoursMap, SELECT_NONE_VALUE, availableShiftCodes, shiftCodeToDescription, getRoleStyles } from './types'; // Import helpers
 import { generateInitialData, getScheduleKey, generateWhatsAppText, getDatesInRange } from './utils'; // Import utils
@@ -132,6 +136,8 @@ export function ShiftMasterApp() {
     const [isClearingMonth, setIsClearingMonth] = useState(false);
     const [hasMounted, setHasMounted] = useState(false);
     const [initialLoadCompleted, setInitialLoadCompleted] = useState(false);
+    // Firebase state removed
+    // const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
 
     const { toast } = useToast();
     const isClient = typeof window !== 'undefined';
@@ -160,8 +166,7 @@ export function ShiftMasterApp() {
     useEffect(() => {
       if (!isClient) return; // Only run on client
 
-      const now = startOfDay(new Date());
-      let initialSelectedDate = now;
+      let initialSelectedDate = startOfDay(new Date());
 
       const localDataString = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (localDataString) {
@@ -835,115 +840,125 @@ export function ShiftMasterApp() {
             columnStyles[i + dateColStartIndex] = { cellWidth: dateColWidth, halign: 'center', valign: 'middle', fontSize: 5 }; // Date columns
         }
 
-        // Draw the table
+        // Draw the table - Use user-provided code here
         doc.autoTable({
             head: header,
             body: body,
-            theme: 'grid', // Use grid theme for borders
-             headStyles: {
-                 fillColor: '#3498db', // Blue header background (primary)
-                 textColor: 255, // White header text
-                 fontStyle: 'bold',
-                 halign: 'center',
-                 valign: 'middle',
-                 fontSize: 5, // Small font size for header dates
-                 cellPadding: { top: 0.5, right: 0.2, bottom: 0.5, left: 0.2 },
-                 lineColor: [200, 200, 200],
-                 lineWidth: 0.1,
-                 // Custom drawing logic for holiday headers
-                 didDrawCell: (data: any) => {
-                    // Check if it's a header cell and not the first column (Employee Name)
-                    if (data.section === 'head' && data.column.index >= dateColStartIndex) { // Adjust index check
-                         const dateIndex = data.column.index - dateColStartIndex; // Adjust index for dates array
-                         // Check if the corresponding date is a holiday
-                         if (dateIndex < datesForTable.length && isHolidayFn(datesForTable[dateIndex])) {
-                             // Draw a light purple background rectangle for holiday headers
-                             doc.setFillColor('#a855f7'); // Purple similar to primary/10 but darker for header
-                             doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
-                             // Re-draw the text in white on the colored background
-                             doc.setTextColor(255);
-                             doc.setFont(undefined, 'bold');
-                             doc.text(String(data.cell.text), data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, {
-                                 halign: 'center',
-                                 valign: 'middle'
-                             });
-                         }
+            theme: 'grid',
+            headStyles: {
+                fillColor: '#3498db',
+                textColor: 255,
+                fontStyle: 'bold',
+                halign: 'center',
+                valign: 'middle',
+                fontSize: 7, // Aumentado de 5 para 7
+                cellPadding: { top: 1, right: 1, bottom: 1, left: 1 }, // Aumentado o padding
+                lineColor: [200, 200, 200],
+                lineWidth: 0.2, // Linha ligeiramente mais espessa
+                didDrawCell: (data: any) => {
+                    if (data.section === 'head' && data.column.index >= dateColStartIndex) {
+                        const dateIndex = data.column.index - dateColStartIndex;
+                        if (dateIndex < datesForTable.length && isHolidayFn(datesForTable[dateIndex])) {
+                            doc.setFillColor('#a855f7');
+                            doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+                            doc.setTextColor(255);
+                            doc.setFont(undefined, 'bold');
+                            doc.text(String(data.cell.text), data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, {
+                                halign: 'center',
+                                valign: 'middle'
+                            });
+                        }
                     }
-                 }
-             },
-            // General styles for all cells
+                }
+            },
             styles: {
-                 cellPadding: { top: 0.5, right: 0.1, bottom: 0.5, left: 0.1 },
-                 fontSize: 5, // Very small font size for cell content
-                 valign: 'middle',
-                 halign: 'center',
-                 lineWidth: 0.1,
-                 lineColor: [200, 200, 200], // Light gray lines
-                 minCellHeight: 8, // Minimum height for cells
-             },
-            columnStyles: columnStyles, // Apply specific column widths/styles
-            margin: { top: 25, left: pageMargin, right: pageMargin, bottom: 15 }, // Page margins
-            // Hook to draw page headers and footers (legend)
+                cellPadding: { top: 1, right: 1, bottom: 1, left: 1 }, // Padding aumentado
+                fontSize: 7, // Aumentado de 5 para 7
+                valign: 'middle',
+                halign: 'center',
+                lineWidth: 0.2, // Linha ligeiramente mais espessa
+                lineColor: [200, 200, 200],
+                minCellHeight: 10, // Aumentado de 8 para 10
+            },
+            columnStyles: {
+                0: {
+                    cellWidth: 25, // Aumentado de 20 para 25
+                    halign: 'left',
+                    fontStyle: 'bold',
+                    fontSize: 6,
+                    valign: 'middle'
+                },
+                // Colunas de datas terão largura automática ajustada
+                ...Object.fromEntries(
+                    Array.from({ length: dateColCount }, (_, i) => [
+                        i + dateColStartIndex,
+                        {
+                            cellWidth: 'auto', // Largura automática
+                            halign: 'center',
+                            valign: 'middle',
+                            fontSize: 6
+                        }
+                    ])
+                )
+            },
+            margin: { top: 15, left: 5, right: 5, bottom: 10 }, // Margens reduzidas
             didDrawPage: (data: any) => {
-                 // Page Header
-                 doc.setFontSize(12);
-                 doc.setTextColor(40);
-                 doc.text('Escala Mensal', pageMargin, 12); // Updated App Name
-                 doc.setFontSize(9);
-                 doc.text(`Mês: ${formatDate(currentMonth, 'MMMM yyyy', { locale: ptBR })}`, pageMargin, 18);
+                // Cabeçalho da página
+                doc.setFontSize(12);
+                doc.setTextColor(40);
+                doc.text('Escala Mensal', 5, 10); // Posição ajustada
+                doc.setFontSize(9);
+                doc.text(`Mês: ${formatDate(currentMonth, 'MMMM yyyy', { locale: ptBR })}`, 5, 16);
 
-                 // Page Footer (Legend)
-                 const pageHeight = doc.internal.pageSize.getHeight();
-                 const startY = pageHeight - 12; // Position legend near bottom
-                 doc.setFontSize(6);
-                 doc.setTextColor(100);
-                 doc.text("Legenda:", pageMargin, startY);
-                 let currentX = pageMargin;
-                 const legendY = startY + 3;
-                 const rectSize = 2.5;
-                 const textOffset = 3;
-                 const spacing = 12; // Spacing between legend items
+                // Rodapé com legenda
+                const pageHeight = doc.internal.pageSize.getHeight();
+                const startY = pageHeight - 10; // Posição ajustada
+                doc.setFontSize(7); // Aumentado de 6 para 7
+                doc.setTextColor(100);
+                doc.text("Legenda:", 5, startY);
 
-                 // Legend for Shift Codes (T, F, FF)
-                 const shiftCodesForLegend: ShiftCode[] = ['TRABALHA', 'FOLGA', 'FF'];
-                 shiftCodesForLegend.forEach(code => {
-                     let fillColorArray: number[] = [255, 255, 255]; // Default white
-                     let textColorArray: number[] = [0, 0, 0];     // Default black
-                     let description = '';
+                let currentX = 5;
+                const legendY = startY + 3;
+                const rectSize = 3; // Aumentado de 2.5 para 3
+                const textOffset = 3.5; // Aumentado de 3 para 3.5
+                const spacing = 14; // Aumentado de 12 para 14
 
-                     if (code === 'TRABALHA') {
-                        fillColorArray = [200, 200, 200]; // Generic gray for 'T' in legend
+                const shiftCodesForLegend: ShiftCode[] = ['TRABALHA', 'FOLGA', 'FF'];
+                shiftCodesForLegend.forEach(code => {
+                    let fillColorArray: number[] = [255, 255, 255];
+                    let textColorArray: number[] = [0, 0, 0];
+                    let description = '';
+
+                    if (code === 'TRABALHA') {
+                        fillColorArray = [200, 200, 200];
                         textColorArray = [0, 0, 0];
                         description = 'Trabalha (Cor varia por Função)';
-                     } else if (code === 'FOLGA') {
-                        fillColorArray = [240, 240, 240]; // Gray
+                    } else if (code === 'FOLGA') {
+                        fillColorArray = [240, 240, 240];
                         textColorArray = [100, 100, 100];
                         description = 'Folga';
-                     } else if (code === 'FF') {
-                        fillColorArray = [46, 204, 113]; // Green
+                    } else if (code === 'FF') {
+                        fillColorArray = [46, 204, 113];
                         textColorArray = [255, 255, 255];
                         description = 'Folga Feriado';
-                      }
+                    }
 
-                     doc.setFillColor(fillColorArray[0], fillColorArray[1], fillColorArray[2]);
-                     doc.rect(currentX, legendY - rectSize / 2, rectSize, rectSize, 'F');
-                     doc.setTextColor(100); // Gray text for legend label
-                     const legendText = `${shiftCodeToDescription[code]}: ${description}`; // Use abbreviation
-                     doc.text(legendText, currentX + textOffset, legendY, { baseline: 'middle' });
-                     currentX += textOffset + doc.getTextWidth(legendText) + spacing;
-                 });
+                    doc.setFillColor(fillColorArray[0], fillColorArray[1], fillColorArray[2]);
+                    doc.rect(currentX, legendY - rectSize / 2, rectSize, rectSize, 'F');
+                    doc.setTextColor(100);
+                    const legendText = `${shiftCodeToDescription[code]}: ${description}`;
+                    doc.text(legendText, currentX + textOffset, legendY, { baseline: 'middle' });
+                    currentX += textOffset + doc.getTextWidth(legendText) + spacing;
+                });
 
-
-                 // Add legend item for Holiday Column Highlight
-                 doc.setFillColor(168, 85, 247); // Purple color used for header highlight
-                 doc.rect(currentX, legendY - rectSize / 2, rectSize, rectSize, 'F');
-                 doc.setTextColor(100);
-                 const holidayLegendText = "Dia Feriado (Coluna)";
-                 doc.text(holidayLegendText, currentX + textOffset, legendY, { baseline: 'middle' });
+                // Item de legenda para feriados
+                doc.setFillColor(168, 85, 247);
+                doc.rect(currentX, legendY - rectSize / 2, rectSize, rectSize, 'F');
+                doc.setTextColor(100);
+                const holidayLegendText = "Dia Feriado (Coluna)";
+                doc.text(holidayLegendText, currentX + textOffset, legendY, { baseline: 'middle' });
             },
-
         });
-
 
         doc.save(`escala_${formatDate(currentMonth, 'yyyy-MM')}.pdf`);
         toast({ title: "Sucesso", description: "PDF da escala gerado.", duration: toastDuration });
@@ -1115,6 +1130,7 @@ export function ShiftMasterApp() {
           onOpenChange={setEditOpen}
           employee={employeeToEdit}
           onSave={(employeeData) => {
+            // Handle the case where a new employee might be added with id 0 or null
             if (!employeeData.id || employeeData.id === 0) {
               addEmployee(employeeData);
             } else {
@@ -1201,7 +1217,7 @@ export function ShiftMasterApp() {
          <ShiftFilters
           filters={filters}
           employees={employees}
-          roles={availableRoles}
+          roles={availableRoles} // Use imported availableRoles
           onFilterChange={handleFilterChange}
         />
 
