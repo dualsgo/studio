@@ -1,6 +1,6 @@
-
 import React, { memo } from 'react';
 import { Employee, ShiftType } from '../types';
+import { SHIFT_DEFINITIONS } from '../constants';
 
 export interface DayInfo {
   num: string;
@@ -22,7 +22,9 @@ interface ShiftRowProps {
   isEditable: boolean;
   onUpdateShift: (empId: string, dayIdx: number, newShift: ShiftType) => void;
   onUpdateEmployeeDailyHour: (empId: string, dayIdx: number, newHour: string) => void;
+  onUpdateEmployeeDailyShiftName: (empId: string, dayIdx: number, newShiftName: string) => void;
   onSelectDay: (idx: number) => void;
+  openConfirmation: (options: any) => void; // Pass modal opener
 }
 
 const ShiftRowComponent: React.FC<ShiftRowProps> = ({
@@ -35,7 +37,9 @@ const ShiftRowComponent: React.FC<ShiftRowProps> = ({
   isEditable,
   onUpdateShift,
   onUpdateEmployeeDailyHour,
-  onSelectDay
+  onUpdateEmployeeDailyShiftName,
+  onSelectDay,
+  openConfirmation
 }) => {
 
   const getDayShift = (day: DayInfo) => {
@@ -51,9 +55,19 @@ const ShiftRowComponent: React.FC<ShiftRowProps> = ({
     return monthDailyHours[dayIdx] || emp.workPeriod;
   };
 
+  const getDayShiftName = (dayIdx: number) => {
+    const monthDailyShiftNames = emp.dailyShiftNames?.[monthKey] || [];
+    return monthDailyShiftNames[dayIdx] || emp.shiftName;
+  };
+
   const handleCellClick = (day: DayInfo) => {
     if (day.isPast) {
-        alert("Dias anteriores não podem ser editados para preservar o histórico.");
+        openConfirmation({
+            title: "Ação Bloqueada",
+            message: "Dias anteriores não podem ser editados para preservar o histórico.",
+            isAlert: true,
+            type: 'info'
+        });
         return;
     }
     if (!isEditable) {
@@ -61,8 +75,6 @@ const ShiftRowComponent: React.FC<ShiftRowProps> = ({
         return;
     }
     
-    // Check if shift is FE (vacation) - derived from getDayShift logic
-    // We need to check if vacation covers this day.
     const currentShift = getDayShift(day);
     if (currentShift === 'FE') return;
 
@@ -70,10 +82,20 @@ const ShiftRowComponent: React.FC<ShiftRowProps> = ({
     const cycle: Record<ShiftType, ShiftType> = { 'T': 'F', 'F': 'FF', 'FF': 'C', 'C': 'T', 'FE': 'FE' };
     const nextShift = cycle[current as ShiftType] || 'T';
 
-    if (confirm(`Deseja alterar o turno de ${emp.name} para "${nextShift}"?`)) {
-      onUpdateShift(emp.id, day.originalIdx, nextShift);
-      onSelectDay(day.originalIdx);
-    }
+    // Simple toggle doesn't necessarily need blocking confirmation unless destructive, 
+    // but if the user requested removing ALL confirms, we might keep this one but as a modal?
+    // User said "confirmations should be modals". 
+    // Changing a shift status (T->F) is frequent check.
+    // Let's assume for high-frequency actions we might skip or use modal if "destructive" or significant.
+    // The previous implementation had a confirm() for every toggle.
+    openConfirmation({
+        title: "Alterar Turno",
+        message: `Deseja alterar o status de ${emp.name} para "${nextShift}" no dia ${day.num}?`,
+        onConfirm: () => {
+            onUpdateShift(emp.id, day.originalIdx, nextShift);
+            onSelectDay(day.originalIdx);
+        }
+    });
   };
 
   const getShiftTextColor = (hour: string) => {
@@ -94,21 +116,33 @@ const ShiftRowComponent: React.FC<ShiftRowProps> = ({
         </div>
       </td>
       <td className="p-3 border-r border-slate-100 bg-slate-50/30">
-        <select 
-          value={getDayHour(selectedDayIdx)}
-          disabled={isSelectedDayLocked}
-          onChange={(e) => onUpdateEmployeeDailyHour(emp.id, selectedDayIdx, e.target.value)}
-          className={`bg-transparent w-full text-[11px] font-extrabold focus:ring-0 border-none p-0 cursor-pointer outline-none transition-colors ${getShiftTextColor(getDayHour(selectedDayIdx))} disabled:opacity-50 disabled:cursor-not-allowed`}
-        >
-          {availableHours.map(h => <option key={h} value={h}>{h}</option>)}
-          {!availableHours.includes(getDayHour(selectedDayIdx)) && <option value={getDayHour(selectedDayIdx)}>{getDayHour(selectedDayIdx)}</option>}
-        </select>
+        <div className="flex flex-col gap-1">
+            {/* Shift Name Dropdown */}
+            <select
+                value={getDayShiftName(selectedDayIdx)}
+                disabled={isSelectedDayLocked}
+                onChange={(e) => onUpdateEmployeeDailyShiftName(emp.id, selectedDayIdx, e.target.value)}
+                className="bg-transparent w-full text-[10px] uppercase font-extrabold text-slate-500 focus:ring-0 border-none p-0 cursor-pointer outline-none mb-1 disabled:opacity-50"
+            >
+                {SHIFT_DEFINITIONS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+            </select>
+
+            {/* Hours Dropdown */}
+            <select 
+              value={getDayHour(selectedDayIdx)}
+              disabled={isSelectedDayLocked}
+              onChange={(e) => onUpdateEmployeeDailyHour(emp.id, selectedDayIdx, e.target.value)}
+              className={`bg-transparent w-full text-[11px] font-extrabold focus:ring-0 border-none p-0 cursor-pointer outline-none transition-colors ${getShiftTextColor(getDayHour(selectedDayIdx))} disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              {availableHours.map(h => <option key={h} value={h}>{h}</option>)}
+              {!availableHours.includes(getDayHour(selectedDayIdx)) && <option value={getDayHour(selectedDayIdx)}>{getDayHour(selectedDayIdx)}</option>}
+            </select>
+        </div>
       </td>
       {filteredDays.map((day) => {
         const shift = getDayShift(day);
         const isLocked = day.isPast;
         
-        // selectedDayIdx is global index. day.originalIdx is global index.
         const isSelected = selectedDayIdx === day.originalIdx;
         const isHighlight = day.isSunday || day.isHoliday;
 

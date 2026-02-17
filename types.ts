@@ -10,6 +10,7 @@ export interface Employee {
   statusColor: string;
   shifts: Record<string, ShiftType[]>; // Keyed by "YYYY-MM"
   dailyHours: Record<string, string[]>; // Keyed by "YYYY-MM", stores specific hours per day
+  dailyShiftNames?: Record<string, string[]>; // Keyed by "YYYY-MM", stores specific shift name per day
   workPeriod: string; // Default work period
   preferredDayOff: string;
   shiftName: string;

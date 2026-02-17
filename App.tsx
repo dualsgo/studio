@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Header } from './components/Header';
 import { Icon } from './components/Icon';
@@ -7,6 +6,7 @@ import { ShiftGrid } from './components/ShiftGrid';
 import { ActionToolbar } from './components/ActionToolbar';
 import { TeamView } from './components/TeamView';
 import { useSchedule } from './hooks/useSchedule';
+import { ConfirmationModal } from './components/ConfirmationModal';
 
 const App: React.FC = () => {
   const {
@@ -14,9 +14,11 @@ const App: React.FC = () => {
     currentMY,
     selectedDayIdx,
     waModal,
+    confirmationModal, // New
     today,
     updateShift,
     updateEmployeeDailyHour,
+    updateEmployeeDailyShiftName, // New
     resetMonth,
     generateNextMonth,
     shareWhatsApp,
@@ -25,7 +27,8 @@ const App: React.FC = () => {
     deleteEmployee,
     setSelectedDayIdx,
     navigateMonth,
-    closeWaModal
+    closeWaModal,
+    openConfirmation // New
   } = useSchedule();
 
   const [currentView, setCurrentView] = useState<'dashboard' | 'team'>('dashboard');
@@ -34,6 +37,19 @@ const App: React.FC = () => {
     <div className="min-h-screen flex flex-col">
       <Header currentView={currentView} onViewChange={setCurrentView} currentMY={currentMY} />
       
+      {/* Confirmation Modal */}
+      <ConfirmationModal 
+        isOpen={confirmationModal.isOpen}
+        onClose={confirmationModal.onClose}
+        onConfirm={confirmationModal.onConfirm}
+        title={confirmationModal.title}
+        message={confirmationModal.message}
+        confirmText={confirmationModal.confirmText}
+        cancelText={confirmationModal.cancelText}
+        type={confirmationModal.type}
+        isAlert={confirmationModal.isAlert}
+      />
+
       {waModal.show && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl p-8 max-w-lg w-full shadow-2xl">
@@ -43,7 +59,15 @@ const App: React.FC = () => {
             </div>
             <textarea readOnly className="w-full h-80 bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm font-medium focus:ring-0 resize-none whitespace-pre-wrap outline-none text-slate-700" value={waModal.text} />
             <div className="mt-6 flex gap-3">
-              <button onClick={() => { navigator.clipboard.writeText(waModal.text); alert('Copiado para a área de transferência!'); }} className="flex-1 bg-green-600 text-white font-extrabold py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 hover:bg-green-700 transition-all active:scale-95">
+              <button onClick={() => { 
+                navigator.clipboard.writeText(waModal.text); 
+                openConfirmation({
+                  title: 'Sucesso',
+                  message: 'Copiado para a área de transferência!',
+                  isAlert: true,
+                  type: 'success'
+                });
+              }} className="flex-1 bg-green-600 text-white font-extrabold py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 hover:bg-green-700 transition-all active:scale-95">
                 <Icon name="content_copy" /> Copiar para WhatsApp
               </button>
             </div>
@@ -77,11 +101,13 @@ const App: React.FC = () => {
               onSelectDay={setSelectedDayIdx}
               onUpdateShift={updateShift} 
               onUpdateEmployeeDailyHour={updateEmployeeDailyHour}
+              onUpdateEmployeeDailyShiftName={updateEmployeeDailyShiftName}
               onShareWhatsApp={shareWhatsApp}
               onGenerateNextMonth={generateNextMonth}
               onResetMonth={resetMonth}
               onNextMonth={() => navigateMonth('next')}
               onPrevMonth={() => navigateMonth('prev')}
+              openConfirmation={openConfirmation}
             />
           </>
         ) : (
@@ -90,6 +116,7 @@ const App: React.FC = () => {
             onUpdateEmployee={updateEmployee}
             onDeleteEmployee={deleteEmployee} 
             onAddEmployee={addEmployee}
+            openConfirmation={openConfirmation}
           />
         )}
       </main>

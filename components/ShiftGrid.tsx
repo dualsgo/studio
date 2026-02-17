@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Employee, ShiftType, MonthYear } from '../types';
 import { Icon } from './Icon';
@@ -13,11 +12,13 @@ interface ShiftGridProps {
   onSelectDay: (idx: number) => void;
   onUpdateShift: (empId: string, dayIdx: number, newShift: ShiftType) => void;
   onUpdateEmployeeDailyHour: (empId: string, dayIdx: number, newHour: string) => void;
+  onUpdateEmployeeDailyShiftName: (empId: string, dayIdx: number, newShiftName: string) => void;
   onShareWhatsApp: (dayIdx: number) => void;
   onGenerateNextMonth: () => void;
   onResetMonth: () => void;
   onNextMonth: () => void;
   onPrevMonth: () => void;
+  openConfirmation: (options: any) => void;
 }
 
 export const ShiftGrid: React.FC<ShiftGridProps> = ({ 
@@ -28,11 +29,13 @@ export const ShiftGrid: React.FC<ShiftGridProps> = ({
   onSelectDay,
   onUpdateShift, 
   onUpdateEmployeeDailyHour,
+  onUpdateEmployeeDailyShiftName,
   onShareWhatsApp, 
   onGenerateNextMonth,
   onResetMonth,
   onNextMonth,
-  onPrevMonth
+  onPrevMonth,
+  openConfirmation
 }) => {
   const [isEditable, setIsEditable] = useState(false);
   const [filter, setFilter] = useState<'all' | 'sunday' | 'holiday'>('all');
@@ -162,7 +165,9 @@ export const ShiftGrid: React.FC<ShiftGridProps> = ({
                 isEditable={isEditable}
                 onUpdateShift={onUpdateShift}
                 onUpdateEmployeeDailyHour={onUpdateEmployeeDailyHour}
+                onUpdateEmployeeDailyShiftName={onUpdateEmployeeDailyShiftName}
                 onSelectDay={onSelectDay}
+                openConfirmation={openConfirmation}
               />
             ))}
           </tbody>

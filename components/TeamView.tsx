@@ -1,32 +1,47 @@
-
 import React, { useState } from 'react';
 import { Employee } from '../types';
 import { Icon } from './Icon';
-import { SHIFT_HOURS } from '../constants';
+import { SHIFT_HOURS, SHIFT_DEFINITIONS } from '../constants';
 
 interface TeamViewProps {
   employees: Employee[];
   onUpdateEmployee: (empId: string, data: Partial<Employee>) => void;
   onDeleteEmployee: (empId: string) => void;
-  onAddEmployee: (name: string, isYoung: boolean, courseDay: string) => void;
+  onAddEmployee: (name: string, isYoung: boolean, courseDay: string, shiftName: string) => void;
+  openConfirmation: (options: any) => void;
 }
 
-export const TeamView: React.FC<TeamViewProps> = ({ employees, onUpdateEmployee, onDeleteEmployee, onAddEmployee }) => {
+export const TeamView: React.FC<TeamViewProps> = ({ employees, onUpdateEmployee, onDeleteEmployee, onAddEmployee, openConfirmation }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [isYoung, setIsYoung] = useState(false);
   const [courseDay, setCourseDay] = useState('Segunda-feira');
+  const [shiftName, setShiftName] = useState('Abertura');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (newName.trim()) {
-      if (confirm(`Deseja cadastrar o colaborador ${newName}?`)) {
-        onAddEmployee(newName, isYoung, courseDay);
-        setNewName('');
-        setIsYoung(false);
-        setShowAddModal(false);
-      }
+      openConfirmation({
+        title: "Confirmar Cadastro",
+        message: `Deseja cadastrar o colaborador ${newName}?`,
+        type: 'info',
+        onConfirm: () => {
+             onAddEmployee(newName, isYoung, courseDay, shiftName);
+             setNewName('');
+             setIsYoung(false);
+             setShiftName('Abertura');
+             setShowAddModal(false);
+        }
+      });
     }
+  };
+
+  const handleUpdateShiftName = (emp: Employee, newShiftName: string) => {
+    openConfirmation({
+        title: "Alterar Turno Padrão",
+        message: `Deseja alterar o turno padrão de ${emp.name} para ${newShiftName}? Isso atualizará o horário padrão também.`,
+        onConfirm: () => onUpdateEmployee(emp.id, { shiftName: newShiftName })
+    });
   };
 
   return (
@@ -68,6 +83,13 @@ export const TeamView: React.FC<TeamViewProps> = ({ employees, onUpdateEmployee,
                 </div>
               )}
 
+              <div>
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1">Turno</label>
+                  <select value={shiftName} onChange={(e) => setShiftName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-sm outline-none">
+                      {SHIFT_DEFINITIONS.map(s => <option key={s.name} value={s.name}>{s.label}</option>)}
+                  </select>
+              </div>
+
               <div className="flex gap-3 pt-6">
                 <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 px-6 py-3 border border-slate-200 rounded-xl font-extrabold text-slate-400 hover:bg-slate-50 transition-all">Cancelar</button>
                 <button type="submit" className="flex-1 px-6 py-3 bg-orange-500 text-white rounded-xl font-extrabold shadow-lg hover:bg-orange-600 transition-all">Cadastrar</button>
@@ -90,7 +112,13 @@ export const TeamView: React.FC<TeamViewProps> = ({ employees, onUpdateEmployee,
                   )}
               </div>
               <button 
-                onClick={() => confirm(`Excluir ${emp.name} permanentemente?`) && onDeleteEmployee(emp.id)}
+                onClick={() => openConfirmation({
+                    title: "Excluir Colaborador",
+                    message: `Deseja excluir ${emp.name} permanentemente?`,
+                    type: 'danger',
+                    confirmText: 'Excluir',
+                    onConfirm: () => onDeleteEmployee(emp.id)
+                })}
                 className="w-10 h-10 rounded-lg bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center border border-red-100"
               >
                 <Icon name="delete" className="text-lg" />
@@ -99,9 +127,13 @@ export const TeamView: React.FC<TeamViewProps> = ({ employees, onUpdateEmployee,
 
             <div className="space-y-4">
               <div>
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1">Horário Padrão</label>
-                <select value={emp.workPeriod} onChange={(e) => confirm(`Alterar horário padrão de ${emp.name}?`) && onUpdateEmployee(emp.id, { workPeriod: e.target.value })} className="w-full bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold p-3 outline-none focus:ring-2 focus:ring-orange-500">
-                  {SHIFT_HOURS.WEEKDAY.map(h => <option key={h} value={h}>{h}</option>)}
+                <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1">Turno Padrão</label>
+                <select 
+                    value={emp.shiftName} 
+                    onChange={(e) => handleUpdateShiftName(emp, e.target.value)} 
+                    className="w-full bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold p-3 outline-none focus:ring-2 focus:ring-orange-500"
+                >
+                  {SHIFT_DEFINITIONS.map(s => <option key={s.name} value={s.name}>{s.label}</option>)}
                 </select>
               </div>
 

@@ -7,6 +7,12 @@ export const SHIFT_HOURS = {
   HOLIDAY: ['12h às 16h', '13h às 17h', '14h às 18h', '15h às 19h', '16h às 20h', '17h às 21h']
 };
 
+export const SHIFT_DEFINITIONS = [
+  { name: 'Abertura', label: 'Abertura (10h-18h20)', hours: '10h às 18h20' },
+  { name: 'Intermediário', label: 'Intermediário (12h-20h20)', hours: '12h às 20h20' },
+  { name: 'Fechamento', label: 'Fechamento (13h40-22h)', hours: '13h40 às 22h' }
+];
+
 const names = [
   'Jheferson Lima', 'Lidi Santos', 'Renata Silva', 'Thais Souza', 'Marcos Oliveira', 
   'Camila Peixoto', 'Cátia Souza', 'Erika Melo', 'Luiz Fernando', 'Carol Dias',
