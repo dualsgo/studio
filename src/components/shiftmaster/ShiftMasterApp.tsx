@@ -1174,6 +1174,47 @@ export function ShiftMasterApp() {
     const triggerFileInput = () => {
         fileInputRef.current?.click();
     };
+
+    const monthlyInsights = useMemo(() => {
+      if (!currentMonth) {
+        return {
+          totalEmployees: employees.length,
+          workShiftsInMonth: 0,
+          dayOffsInMonth: 0,
+          todayCoverage: 0,
+        };
+      }
+
+      const monthDates = getDatesInRange(startOfMonth(currentMonth), endOfMonth(currentMonth));
+      let workShiftsInMonth = 0;
+      let dayOffsInMonth = 0;
+
+      monthDates.forEach((date) => {
+        employees.forEach((employee) => {
+          const entry = schedule[getScheduleKey(employee.id, date)];
+          if (entry?.shift === 'TRABALHA') {
+            workShiftsInMonth += 1;
+          }
+          if (!entry || entry.shift === 'FOLGA' || entry.shift === 'FF') {
+            dayOffsInMonth += 1;
+          }
+        });
+      });
+
+      const todayCoverage = filters.selectedDate
+        ? employees.reduce((acc, employee) => {
+            const todayEntry = schedule[getScheduleKey(employee.id, filters.selectedDate!)];
+            return todayEntry?.shift === 'TRABALHA' ? acc + 1 : acc;
+          }, 0)
+        : 0;
+
+      return {
+        totalEmployees: employees.length,
+        workShiftsInMonth,
+        dayOffsInMonth,
+        todayCoverage,
+      };
+    }, [currentMonth, employees, filters.selectedDate, schedule]);
     // ----- End Backup and Restore Functions -----
 
 
@@ -1247,11 +1288,38 @@ export function ShiftMasterApp() {
             style={{ display: 'none' }}
         />
 
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <h1 className="text-xl sm:text-2xl font-bold text-primary text-center sm:text-left">
-              Escala Mensal {/* Updated App Name */}
-          </h1>
-          <div className="flex items-center space-x-1 sm:space-x-2 flex-wrap gap-1 justify-center sm:justify-end">
+      <div className="mb-3 rounded-xl border bg-card p-4 shadow-sm">
+        <div className="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-primary text-center sm:text-left">
+              Escala Mensal
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1 text-center sm:text-left">
+              Planeje turnos, acompanhe cobertura diária e automatize a comunicação da equipe em segundos.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full sm:w-auto">
+            <Card className="py-3 px-3">
+              <CardDescription className="text-xs">Colaboradores</CardDescription>
+              <CardTitle className="text-lg leading-none">{monthlyInsights.totalEmployees}</CardTitle>
+            </Card>
+            <Card className="py-3 px-3">
+              <CardDescription className="text-xs">Turnos no mês</CardDescription>
+              <CardTitle className="text-lg leading-none">{monthlyInsights.workShiftsInMonth}</CardTitle>
+            </Card>
+            <Card className="py-3 px-3">
+              <CardDescription className="text-xs">Folgas no mês</CardDescription>
+              <CardTitle className="text-lg leading-none">{monthlyInsights.dayOffsInMonth}</CardTitle>
+            </Card>
+            <Card className="py-3 px-3">
+              <CardDescription className="text-xs">Escalados hoje</CardDescription>
+              <CardTitle className="text-lg leading-none">{monthlyInsights.todayCoverage}</CardTitle>
+            </Card>
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-1 sm:space-x-2 flex-wrap gap-1 justify-center sm:justify-end mt-3">
               {/* Backup/Restore Buttons */}
               <Button variant="outline" size="sm" onClick={handleSaveBackup}><Save className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> Salvar Backup</Button>
               <Button variant="outline" size="sm" onClick={triggerFileInput}><Upload className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> Carregar Backup</Button>
@@ -1277,8 +1345,8 @@ export function ShiftMasterApp() {
                      </Tooltip>
                  </TooltipProvider>
              )} */}
-           </div>
-         </div>
+          </div>
+      </div>
 
          <ShiftFilters
           filters={filters}
@@ -1324,4 +1392,3 @@ export function ShiftMasterApp() {
     </div>
   );
 }
-
