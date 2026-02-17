@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .sticky-col {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background-color: inherit;
+  }
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+/* Print Styles for A4 Landscape PDF Export */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 1cm;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    background-color: white !important;
+  }
+
+  /* Hide UI elements */
+  header, 
+  aside, 
+  .sticky-col, /* Unstick columns for print flow */
+  button, 
+  .no-print,
+  /* ActionToolbar specific hiding */
+  .bg-slate-900, /* Action Toolbar Label */
+  .border-dashed, /* Info Box */
+  /* Sidebar/Header specific if classes are used */
+  nav {
+    display: none !important;
+  }
+
+  /* Ensure main container takes full width */
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    width: 100% !important;
+  }
+
+  /* Ensure table is visible and formatted */
+  table {
+    width: 100% !important;
+    font-size: 8px !important; /* Smaller font for print */
+    border-collapse: collapse !important;
+  }
+
+  th, td {
+    border: 1px solid #cbd5e1 !important;
+    padding: 4px !important;
+    white-space: nowrap !important;
+  }
+
+  /* Hide complex interactive elements inside cells if possible, prefer text */
+  select {
+    appearance: none;
+    border: none;
+    background: transparent;
+    padding: 0;
+    font-weight: bold;
+    color: black !important;
+  }
+
+  /* Show full table content, prevent scrolling */
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  /* Adjust Sticky Column behavior for print */
+  .sticky-col {
+    position: static !important;
+    border-right: 1px solid #cbd5e1 !important;
+    display: table-cell !important; /* Re-enable for table structure */
+  }
+  
+  /* Ensure ShiftRow buttons look like static badges */
+  button:disabled {
+      opacity: 1 !important;
+  }
+}

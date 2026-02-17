@@ -14,11 +14,12 @@ const App: React.FC = () => {
     currentMY,
     selectedDayIdx,
     waModal,
-    confirmationModal, // New
+    confirmationModal, 
     today,
     updateShift,
     updateEmployeeDailyHour,
-    updateEmployeeDailyShiftName, // New
+    updateEmployeeDailyShiftName,
+    updateEmployeeDailyRole, // New
     resetMonth,
     generateNextMonth,
     shareWhatsApp,
@@ -28,7 +29,11 @@ const App: React.FC = () => {
     setSelectedDayIdx,
     navigateMonth,
     closeWaModal,
-    openConfirmation // New
+    openConfirmation,
+    exportExcel,
+    exportPDF,
+    checkInterstice, // New
+    validateSunday2x1 // New
   } = useSchedule();
 
   const [currentView, setCurrentView] = useState<'dashboard' | 'team'>('dashboard');
@@ -51,7 +56,7 @@ const App: React.FC = () => {
       />
 
       {waModal.show && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in no-print">
           <div className="bg-white rounded-2xl p-8 max-w-lg w-full shadow-2xl">
             <div className="flex justify-between items-center mb-6">
               <h4 className="text-xl font-extrabold flex items-center gap-2 text-slate-900"><Icon name="chat" className="text-green-600" /> Escala Diária</h4>
@@ -78,20 +83,26 @@ const App: React.FC = () => {
       <main className="flex-1 px-4 sm:px-6 lg:px-10 py-8 max-w-[1700px] mx-auto w-full">
         {currentView === 'dashboard' ? (
           <>
-            <div className="mb-8 animate-fade-in flex flex-col sm:flex-row sm:items-end justify-between gap-6">
+            <div className="mb-8 animate-fade-in flex flex-col sm:flex-row sm:items-end justify-between gap-6 no-print">
               <div>
                 <h1 className="text-4xl lg:text-5xl font-extrabold text-slate-900 tracking-tight mb-2">Painel de <span className="text-orange-500">Escalas</span></h1>
                 <p className="text-sm font-bold text-slate-400">Gerencie turnos, visualize presença e envie escalas diárias.</p>
               </div>
             </div>
             
-            <DaySummaryCard 
-              employees={employees} 
-              selectedDayIdx={selectedDayIdx} 
-              currentMY={currentMY} 
-            />
+            <div className="no-print">
+                <DaySummaryCard 
+                employees={employees} 
+                selectedDayIdx={selectedDayIdx} 
+                currentMY={currentMY} 
+                />
+            </div>
 
-            <ActionToolbar />
+            <ActionToolbar 
+                onExportExcel={exportExcel}
+                onExportPDF={exportPDF}
+                openConfirmation={openConfirmation}
+            />
 
             <ShiftGrid 
               employees={employees} 
@@ -102,12 +113,15 @@ const App: React.FC = () => {
               onUpdateShift={updateShift} 
               onUpdateEmployeeDailyHour={updateEmployeeDailyHour}
               onUpdateEmployeeDailyShiftName={updateEmployeeDailyShiftName}
+              onUpdateEmployeeDailyRole={updateEmployeeDailyRole}
               onShareWhatsApp={shareWhatsApp}
               onGenerateNextMonth={generateNextMonth}
               onResetMonth={resetMonth}
               onNextMonth={() => navigateMonth('next')}
               onPrevMonth={() => navigateMonth('prev')}
               openConfirmation={openConfirmation}
+              checkInterstice={checkInterstice}
+              validateSunday2x1={validateSunday2x1}
             />
           </>
         ) : (

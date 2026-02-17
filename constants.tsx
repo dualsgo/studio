@@ -13,6 +13,25 @@ export const SHIFT_DEFINITIONS = [
   { name: 'Fechamento', label: 'Fechamento (13h40-22h)', hours: '13h40 às 22h' }
 ];
 
+export const ROLES = ['Vendedor', 'Caixa', 'Estoque', 'Gerente', 'Jovem Aprendiz'];
+
+export const HOLIDAYS_2026 = [
+  { date: '2026-01-01', name: 'Confraternização Universal' },
+  { date: '2026-01-20', name: 'São Sebastião (RJ)' },
+  { date: '2026-02-17', name: 'Carnaval' },
+  { date: '2026-02-18', name: 'Cinzas' },
+  { date: '2026-04-03', name: 'Sexta-feira Santa' },
+  { date: '2026-04-21', name: 'Tiradentes' },
+  { date: '2026-05-01', name: 'Dia do Trabalho' },
+  { date: '2026-06-04', name: 'Corpus Christi' },
+  { date: '2026-09-07', name: 'Independência do Brasil' },
+  { date: '2026-10-12', name: 'Nossa Senhora Aparecida' },
+  { date: '2026-11-02', name: 'Finados' },
+  { date: '2026-11-15', name: 'Proclamação da República' },
+  { date: '2026-11-20', name: 'Dia da Consciência Negra' },
+  { date: '2026-12-25', name: 'Natal' }
+];
+
 const names = [
   'Jheferson Lima', 'Lidi Santos', 'Renata Silva', 'Thais Souza', 'Marcos Oliveira', 
   'Camila Peixoto', 'Cátia Souza', 'Erika Melo', 'Luiz Fernando', 'Carol Dias',

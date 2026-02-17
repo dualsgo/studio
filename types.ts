@@ -11,6 +11,7 @@ export interface Employee {
   shifts: Record<string, ShiftType[]>; // Keyed by "YYYY-MM"
   dailyHours: Record<string, string[]>; // Keyed by "YYYY-MM", stores specific hours per day
   dailyShiftNames?: Record<string, string[]>; // Keyed by "YYYY-MM", stores specific shift name per day
+  dailyRoles?: Record<string, string[]>; // Keyed by "YYYY-MM", stores specific role per day (e.g. Caixa, Vendedor)
   workPeriod: string; // Default work period
   preferredDayOff: string;
   shiftName: string;

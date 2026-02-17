@@ -13,12 +13,15 @@ interface ShiftGridProps {
   onUpdateShift: (empId: string, dayIdx: number, newShift: ShiftType) => void;
   onUpdateEmployeeDailyHour: (empId: string, dayIdx: number, newHour: string) => void;
   onUpdateEmployeeDailyShiftName: (empId: string, dayIdx: number, newShiftName: string) => void;
+  onUpdateEmployeeDailyRole?: (empId: string, dayIdx: number, newRole: string) => void;
   onShareWhatsApp: (dayIdx: number) => void;
   onGenerateNextMonth: () => void;
   onResetMonth: () => void;
   onNextMonth: () => void;
   onPrevMonth: () => void;
   openConfirmation: (options: any) => void;
+  checkInterstice?: (emp: Employee, dayIdx: number) => boolean;
+  validateSunday2x1?: (emp: Employee, dayIdx: number) => boolean;
 }
 
 export const ShiftGrid: React.FC<ShiftGridProps> = ({ 
@@ -30,12 +33,15 @@ export const ShiftGrid: React.FC<ShiftGridProps> = ({
   onUpdateShift, 
   onUpdateEmployeeDailyHour,
   onUpdateEmployeeDailyShiftName,
+  onUpdateEmployeeDailyRole,
   onShareWhatsApp, 
   onGenerateNextMonth,
   onResetMonth,
   onNextMonth,
   onPrevMonth,
-  openConfirmation
+  openConfirmation,
+  checkInterstice,
+  validateSunday2x1
 }) => {
   const [isEditable, setIsEditable] = useState(false);
   const [filter, setFilter] = useState<'all' | 'sunday' | 'holiday'>('all');
@@ -63,7 +69,7 @@ export const ShiftGrid: React.FC<ShiftGridProps> = ({
         num: (i + 1).toString().padStart(2, '0'),
         weekday: weekdays[date.getDay()],
         isSunday: date.getDay() === 0,
-        isHoliday: false, // In a real app, check against a holiday list
+        isHoliday: false, 
         isPast,
         dateStr: `${currentMY.year}-${(currentMY.month + 1).toString().padStart(2, '0')}-${(i + 1).toString().padStart(2, '0')}`
       };
@@ -78,15 +84,30 @@ export const ShiftGrid: React.FC<ShiftGridProps> = ({
   }, [days, filter]);
 
   const monthKey = `${currentMY.year}-${currentMY.month.toString().padStart(2, '0')}`;
-
   const currentDayType = days[selectedDayIdx] ? (days[selectedDayIdx].isSunday ? 'SUNDAY' : (days[selectedDayIdx].isHoliday ? 'HOLIDAY' : 'WEEKDAY')) : 'WEEKDAY';
   const availableHours = SHIFT_HOURS[currentDayType];
+
+  // Coverage Stats Calculation
+  const coverageStats = useMemo(() => {
+      const counts = { abertura: 0, intermediario: 0, fechamento: 0 };
+      employees.forEach(emp => {
+          const shift = (emp.shifts[monthKey] || [])[selectedDayIdx];
+          if (shift === 'T') {
+              const shiftName = (emp.dailyShiftNames?.[monthKey] || [])[selectedDayIdx] || emp.shiftName;
+              if (shiftName === 'Abertura') counts.abertura++;
+              else if (shiftName === 'Intermediário') counts.intermediario++;
+              else if (shiftName === 'Fechamento') counts.fechamento++;
+          }
+      });
+      return counts;
+  }, [employees, monthKey, selectedDayIdx]);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col w-full animate-fade-in">
       {/* Top Nav */}
       <div className="bg-slate-50 p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+        {/* ... existing header ... */}
+         <div className="flex items-center gap-3">
           <button onClick={onPrevMonth} className="p-2 hover:bg-white border border-transparent hover:border-slate-200 rounded-lg transition-all text-slate-600"><Icon name="chevron_left" /></button>
           <div className="bg-white px-6 py-2 rounded-lg border border-slate-200 shadow-sm">
             <h3 className="font-extrabold text-sm text-slate-900 uppercase tracking-tight">{months[currentMY.month]} {currentMY.year}</h3>
@@ -132,13 +153,30 @@ export const ShiftGrid: React.FC<ShiftGridProps> = ({
         </button>
       </div>
 
+      {/* Coverage Counter */}
+      <div className="bg-slate-50 px-6 py-2 border-b border-slate-200 flex gap-6 items-center justify-center lg:justify-start">
+         <span className="text-[10px] font-bold text-slate-400 uppercase">Cobertura do Dia {days[selectedDayIdx]?.num}:</span>
+         <div className={`flex items-center gap-1.5 ${coverageStats.abertura < 2 ? 'text-red-500' : 'text-slate-700'}`}>
+            <span className="font-extrabold text-xs">{coverageStats.abertura}</span>
+            <span className="text-[10px] uppercase font-bold text-slate-400">Abertura</span>
+         </div>
+         <div className={`flex items-center gap-1.5 ${coverageStats.intermediario < 2 ? 'text-red-500' : 'text-slate-700'}`}>
+            <span className="font-extrabold text-xs">{coverageStats.intermediario}</span>
+            <span className="text-[10px] uppercase font-bold text-slate-400">Inter.</span>
+         </div>
+         <div className={`flex items-center gap-1.5 ${coverageStats.fechamento < 2 ? 'text-red-500' : 'text-slate-700'}`}>
+            <span className="font-extrabold text-xs">{coverageStats.fechamento}</span>
+            <span className="text-[10px] uppercase font-bold text-slate-400">Fechamento</span>
+         </div>
+      </div>
+
       {/* Table */}
       <div className="overflow-x-auto custom-scrollbar">
         <table className="w-full text-left border-collapse min-w-[1400px]">
           <thead>
             <tr className="bg-slate-50 text-[10px] font-extrabold text-slate-500 uppercase tracking-widest border-b border-slate-200">
               <th className="sticky-col p-4 border-r border-slate-100 min-w-[200px] shadow-none">Colaborador</th>
-              <th className="p-4 border-r border-slate-100 min-w-[180px] bg-slate-50">Horário (Dia {days[selectedDayIdx]?.num})</th>
+              <th className="p-4 border-r border-slate-100 min-w-[180px] bg-slate-50">Horário / Função (Dia {days[selectedDayIdx]?.num})</th>
               {filteredDays.map((day) => (
                 <th 
                   key={day.num} 
@@ -166,8 +204,11 @@ export const ShiftGrid: React.FC<ShiftGridProps> = ({
                 onUpdateShift={onUpdateShift}
                 onUpdateEmployeeDailyHour={onUpdateEmployeeDailyHour}
                 onUpdateEmployeeDailyShiftName={onUpdateEmployeeDailyShiftName}
+                onUpdateEmployeeDailyRole={onUpdateEmployeeDailyRole}
                 onSelectDay={onSelectDay}
                 openConfirmation={openConfirmation}
+                checkInterstice={checkInterstice}
+                validateSunday2x1={validateSunday2x1}
               />
             ))}
           </tbody>

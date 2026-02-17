@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { Employee, ShiftType } from '../types';
-import { SHIFT_DEFINITIONS } from '../constants';
+import { SHIFT_DEFINITIONS, ROLES } from '../constants';
 
 export interface DayInfo {
   num: string;
@@ -23,8 +23,11 @@ interface ShiftRowProps {
   onUpdateShift: (empId: string, dayIdx: number, newShift: ShiftType) => void;
   onUpdateEmployeeDailyHour: (empId: string, dayIdx: number, newHour: string) => void;
   onUpdateEmployeeDailyShiftName: (empId: string, dayIdx: number, newShiftName: string) => void;
+  onUpdateEmployeeDailyRole?: (empId: string, dayIdx: number, newRole: string) => void;
   onSelectDay: (idx: number) => void;
-  openConfirmation: (options: any) => void; // Pass modal opener
+  openConfirmation: (options: any) => void;
+  checkInterstice?: (emp: Employee, dayIdx: number) => boolean;
+  validateSunday2x1?: (emp: Employee, dayIdx: number) => boolean;
 }
 
 const ShiftRowComponent: React.FC<ShiftRowProps> = ({
@@ -38,8 +41,11 @@ const ShiftRowComponent: React.FC<ShiftRowProps> = ({
   onUpdateShift,
   onUpdateEmployeeDailyHour,
   onUpdateEmployeeDailyShiftName,
+  onUpdateEmployeeDailyRole,
   onSelectDay,
-  openConfirmation
+  openConfirmation,
+  checkInterstice,
+  validateSunday2x1
 }) => {
 
   const getDayShift = (day: DayInfo) => {
@@ -58,6 +64,11 @@ const ShiftRowComponent: React.FC<ShiftRowProps> = ({
   const getDayShiftName = (dayIdx: number) => {
     const monthDailyShiftNames = emp.dailyShiftNames?.[monthKey] || [];
     return monthDailyShiftNames[dayIdx] || emp.shiftName;
+  };
+  
+  const getDayRole = (dayIdx: number) => {
+    const monthDailyRoles = emp.dailyRoles?.[monthKey] || [];
+    return monthDailyRoles[dayIdx] || 'Vendedor';
   };
 
   const handleCellClick = (day: DayInfo) => {
@@ -82,12 +93,6 @@ const ShiftRowComponent: React.FC<ShiftRowProps> = ({
     const cycle: Record<ShiftType, ShiftType> = { 'T': 'F', 'F': 'FF', 'FF': 'C', 'C': 'T', 'FE': 'FE' };
     const nextShift = cycle[current as ShiftType] || 'T';
 
-    // Simple toggle doesn't necessarily need blocking confirmation unless destructive, 
-    // but if the user requested removing ALL confirms, we might keep this one but as a modal?
-    // User said "confirmations should be modals". 
-    // Changing a shift status (T->F) is frequent check.
-    // Let's assume for high-frequency actions we might skip or use modal if "destructive" or significant.
-    // The previous implementation had a confirm() for every toggle.
     openConfirmation({
         title: "Alterar Turno",
         message: `Deseja alterar o status de ${emp.name} para "${nextShift}" no dia ${day.num}?`,
@@ -137,6 +142,18 @@ const ShiftRowComponent: React.FC<ShiftRowProps> = ({
               {availableHours.map(h => <option key={h} value={h}>{h}</option>)}
               {!availableHours.includes(getDayHour(selectedDayIdx)) && <option value={getDayHour(selectedDayIdx)}>{getDayHour(selectedDayIdx)}</option>}
             </select>
+            
+            {/* Role Dropdown (New) */}
+            {onUpdateEmployeeDailyRole && (
+                 <select
+                    value={getDayRole(selectedDayIdx)}
+                    disabled={isSelectedDayLocked}
+                    onChange={(e) => onUpdateEmployeeDailyRole(emp.id, selectedDayIdx, e.target.value)}
+                    className="bg-transparent w-full text-[9px] uppercase font-bold text-slate-400 focus:ring-0 border-none p-0 cursor-pointer outline-none mt-1 disabled:opacity-50"
+                >
+                    {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+            )}
         </div>
       </td>
       {filteredDays.map((day) => {
@@ -146,16 +163,25 @@ const ShiftRowComponent: React.FC<ShiftRowProps> = ({
         const isSelected = selectedDayIdx === day.originalIdx;
         const isHighlight = day.isSunday || day.isHoliday;
 
+        // Validation Checks
+        const isIntersticeViolation = checkInterstice ? !checkInterstice(emp, day.originalIdx) : false;
+        const isSundayViolation = (day.isSunday && validateSunday2x1) ? !validateSunday2x1(emp, day.originalIdx) : false;
+
         return (
           <td 
             key={day.num} 
             className={`p-2 text-center relative border-r border-slate-100/50 ${isSelected ? 'bg-orange-50/30' : ''} ${isHighlight ? 'bg-orange-50/10' : ''}`}
           >
             {isHighlight && <div className="absolute inset-y-0 left-0 right-0 border-x-2 border-orange-400/10 pointer-events-none"></div>}
+            
+            {/* Visual Indicators for Violations */}
+            {isIntersticeViolation && <div className="absolute inset-0 bg-yellow-300/30 animate-pulse pointer-events-none" title="Interstício < 11h"></div>}
+            {isSundayViolation && <div className="absolute inset-0 border-2 border-red-500 pointer-events-none" title="Violação Regra Domingo (2x1)"></div>}
+
             <button 
               disabled={isLocked && isEditable}
               onClick={() => handleCellClick(day)}
-              className={`inline-flex items-center justify-center w-8 h-8 rounded-lg text-white text-[10px] font-extrabold shadow-sm transition-all ${
+              className={`inline-flex items-center justify-center w-8 h-8 rounded-lg text-white text-[10px] font-extrabold shadow-sm transition-all relative z-10 ${
                 isEditable && !isLocked && shift !== 'FE' ? 'cursor-pointer hover:scale-110 active:scale-95' : 'cursor-default'
               } ${isLocked ? 'opacity-90 grayscale-[0.3]' : ''} ${
                 shift === 'T' ? 'bg-sky-600' : 
