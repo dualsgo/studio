@@ -1,5 +1,5 @@
-import React from \'react\';
-import { Icon } from \'./Icon\';
+import React from 'react';
+import { Icon } from './Icon';
 
 interface ConfirmationModalProps {
   isOpen: boolean;
@@ -9,7 +9,7 @@ interface ConfirmationModalProps {
   message: string;
   confirmText?: string;
   cancelText?: string;
-  type?: \'danger\' | \'warning\' | \'info\' | \'success\';
+  type?: 'danger' | 'warning' | 'info' | 'success';
   isAlert?: boolean;
 }
 
@@ -19,9 +19,9 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   onConfirm, 
   title, 
   message, 
-  confirmText = \'Confirmar\', 
-  cancelText = \'Cancelar\', 
-  type = \'info\', 
+  confirmText = 'Confirmar', 
+  cancelText = 'Cancelar', 
+  type = 'info', 
   isAlert = false
 }) => {
   if (!isOpen) return null;
@@ -32,10 +32,10 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   };
 
   const colors = {
-    danger: { bg: \'bg-red-50\', text: \'text-red-800\', icon: \'error\', confirmBg: \'bg-red-600 hover:bg-red-700\' },
-    warning: { bg: \'bg-yellow-50\', text: \'text-yellow-800\', icon: \'warning\', confirmBg: \'bg-yellow-500 hover:bg-yellow-600\' },
-    info: { bg: \'bg-sky-50\', text: \'text-sky-800\', icon: \'info\', confirmBg: \'bg-sky-600 hover:bg-sky-700\' },
-    success: { bg: \'bg-green-50\', text: \'text-green-800\', icon: \'check_circle\', confirmBg: \'bg-green-600 hover:bg-green-700\' }
+    danger: { bg: 'bg-red-50', text: 'text-red-800', icon: 'error', confirmBg: 'bg-red-600 hover:bg-red-700' },
+    warning: { bg: 'bg-yellow-50', text: 'text-yellow-800', icon: 'warning', confirmBg: 'bg-yellow-500 hover:bg-yellow-600' },
+    info: { bg: 'bg-sky-50', text: 'text-sky-800', icon: 'info', confirmBg: 'bg-sky-600 hover:bg-sky-700' },
+    success: { bg: 'bg-green-50', text: 'text-green-800', icon: 'check_circle', confirmBg: 'bg-green-600 hover:bg-green-700' }
   };
 
   const color = colors[type];
@@ -44,7 +44,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in no-print">
       <div className={`rounded-2xl p-8 max-w-sm w-full shadow-2xl ${color.bg}`}>
         <div className="flex items-start gap-4">
-            <div className={`w-12 h-12 rounded-full flex-shrink-0 flex items-center justify-center ${color.confirmBg.split(\' \')[0].replace(\'bg-\', \'bg-opacity-10\')}`}>
+            <div className={`w-12 h-12 rounded-full flex-shrink-0 flex items-center justify-center ${color.confirmBg.split(' ')[0].replace('bg-', 'bg-opacity-10')}`}>
                 <Icon name={color.icon} className={`${color.text} text-2xl`} />
             </div>
             <div>

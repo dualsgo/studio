@@ -1,6 +1,6 @@
-import React, { memo } from \'react\';
-import { Employee, ShiftType } from \'../types\';
-import { SHIFT_DEFINITIONS } from \'../constants\';
+import React, { memo } from 'react';
+import { Employee, ShiftType } from '../types';
+import { SHIFT_DEFINITIONS } from '../constants';
 
 export interface DayInfo {
   num: string;
@@ -28,7 +28,25 @@ interface ShiftRowProps {
   validateSunday2x1?: (emp: Employee, dayIdx: number) => boolean;
 }
 
-const ShiftRowComponent: React.FC<ShiftRowProps> = ({
+const ShiftCell: React.FC<{ shift: ShiftType, isSunday: boolean, isHoliday: boolean, hasConflict: boolean, hasWarning: boolean }> = ({ shift, isSunday, isHoliday, hasConflict, hasWarning }) => {
+  const baseClasses = 'w-full h-10 flex items-center justify-center text-xs font-extrabold rounded-md transition-all';
+  let colorClasses = 'bg-slate-100 text-slate-400';
+
+  switch (shift) {
+    case 'T': colorClasses = 'bg-sky-100 text-sky-700'; break;
+    case 'F': colorClasses = 'bg-orange-100 text-orange-600'; break;
+    case 'FF': colorClasses = 'bg-red-100 text-red-700'; break;
+    case 'C': colorClasses = 'bg-teal-100 text-teal-700'; break;
+    case 'FE': colorClasses = 'bg-indigo-100 text-indigo-700'; break;
+  }
+  
+  if (hasConflict) colorClasses = 'bg-red-500 text-white animate-pulse';
+  else if (hasWarning) colorClasses = 'bg-yellow-400 text-white';
+
+  return <div className={`${baseClasses} ${colorClasses}`}>{shift}</div>;
+};
+
+export const ShiftRow: React.FC<ShiftRowProps> = memo(({
   emp,
   filteredDays,
   selectedDayIdx,
@@ -40,106 +58,75 @@ const ShiftRowComponent: React.FC<ShiftRowProps> = ({
   onUpdateEmployeeDailyHour,
   onUpdateEmployeeDailyShiftName,
   onSelectDay,
+  openConfirmation,
   checkInterstice,
   validateSunday2x1
 }) => {
 
-  const getDayShift = (day: DayInfo) => {
-    if (emp.vacationStart && emp.vacationEnd) {
-      if (day.dateStr >= emp.vacationStart && day.dateStr <= emp.vacationEnd) return \'FE\';
-    }
-    const monthShifts = emp.shifts[monthKey] || [];
-    return monthShifts[day.originalIdx] || \'F\';
-  };
+  const shiftForDay = (dayIdx: number) => (emp.shifts[monthKey] || [])[dayIdx] || 'F';
+  const dailyHourForDay = (dayIdx: number) => (emp.dailyHours[monthKey] || [])[dayIdx] || emp.workPeriod;
+  const dailyShiftNameForDay = (dayIdx: number) => (emp.dailyShiftNames?.[monthKey] || [])[dayIdx] || emp.shiftName;
 
-  const getDayHour = (dayIdx: number) => {
-    const monthDailyHours = emp.dailyHours[monthKey] || [];
-    return monthDailyHours[dayIdx] || emp.workPeriod;
-  };
-
-  const getDayShiftName = (dayIdx: number) => {
-    const monthDailyShiftNames = emp.dailyShiftNames?.[monthKey] || [];
-    return monthDailyShiftNames[dayIdx] || emp.shiftName;
-  };
-
-  const getShiftTextColor = (hour: string) => {
-    if (hour.includes(\'10h\')) return \'text-orange-600\'; 
-    if (hour.includes(\'12h\')) return \'text-sky-600\'; 
-    if (hour.includes(\'13h40\')) return \'text-indigo-600\'; 
-    return \'text-slate-900\';
+  const handleShiftChange = (dayIdx: number, currentShift: ShiftType) => {
+    if (!isEditable || isSelectedDayLocked) return;
+    const shifts: ShiftType[] = ['T', 'F', 'FF', 'C', 'FE'];
+    const nextIndex = (shifts.indexOf(currentShift) + 1) % shifts.length;
+    onUpdateShift(emp.id, dayIdx, shifts[nextIndex]);
   };
 
   return (
-    <tr className="group hover:bg-slate-50/50 transition-colors">
-      <td className="sticky-col p-4 border-r border-slate-100 group-hover:bg-slate-50">
-        <div className="flex flex-col">
-          <span className={`font-extrabold text-xs uppercase tracking-tight ${getShiftTextColor(getDayHour(selectedDayIdx))}`}>
-            {emp.name}
-          </span>
-          {emp.isYoungApprentice && <span className="text-[8px] font-extrabold text-teal-600 uppercase tracking-widest mt-0.5">Jovem Aprendiz</span>}
-        </div>
+    <tr className="hover:bg-slate-50 transition-colors duration-150">
+      <td className="sticky-col p-2 border-r border-slate-100 min-w-[200px]">
+        <div className="font-extrabold text-sm text-slate-800 truncate">{emp.name}</div>
+        <div className="text-[10px] font-bold text-slate-400 uppercase">{emp.shiftName}</div>
       </td>
-      <td className="p-3 border-r border-slate-100 bg-slate-50/30">
-        <div className="flex flex-col gap-1">
-            {/* Shift Name Dropdown */}
-            <select
-                value={getDayShiftName(selectedDayIdx)}
-                disabled={isSelectedDayLocked}
-                onChange={(e) => onUpdateEmployeeDailyShiftName(emp.id, selectedDayIdx, e.target.value)}
-                className="bg-transparent w-full text-[10px] uppercase font-extrabold text-slate-500 focus:ring-0 border-none p-0 cursor-pointer outline-none mb-1 disabled:opacity-50"
-            >
+      
+      {/* Details for Selected Day */}
+      <td className="p-2 border-r border-slate-100 min-w-[180px]">
+        {isEditable ? (
+          <div className='flex flex-col gap-1'>
+             <select 
+              value={dailyShiftNameForDay(selectedDayIdx)}
+              onChange={(e) => onUpdateEmployeeDailyShiftName(emp.id, selectedDayIdx, e.target.value)}
+              className='w-full bg-white border-slate-200 rounded-md text-xs font-bold p-2 focus:ring-1 focus:ring-orange-500 focus:border-orange-500'
+             >
                 {SHIFT_DEFINITIONS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-            </select>
-
-            {/* Hours Dropdown */}
-            <select 
-              value={getDayHour(selectedDayIdx)}
-              disabled={isSelectedDayLocked}
-              onChange={(e) => onUpdateEmployeeDailyHour(emp.id, selectedDayIdx, e.target.value)}
-              className={`bg-transparent w-full text-[11px] font-extrabold focus:ring-0 border-none p-0 cursor-pointer outline-none transition-colors ${getShiftTextColor(getDayHour(selectedDayIdx))} disabled:opacity-50 disabled:cursor-not-allowed`}
-            >
-              {availableHours.map(h => <option key={h} value={h}>{h}</option>)}
-              {!availableHours.includes(getDayHour(selectedDayIdx)) && <option value={getDayHour(selectedDayIdx)}>{getDayHour(selectedDayIdx)}</option>}\
-            </select>
-        </div>
+             </select>
+          </div>
+        ) : (
+          <div>
+            <div className="font-bold text-xs text-slate-700">{dailyShiftNameForDay(selectedDayIdx)}</div>
+            <div className="text-[10px] font-medium text-slate-500">{dailyHourForDay(selectedDayIdx)}</div>
+          </div>
+        )}
       </td>
-      {filteredDays.map((day) => {
-        const shift = getDayShift(day);
-        
-        const isSelected = selectedDayIdx === day.originalIdx;
-        const isHighlight = day.isSunday || day.isHoliday;
 
-        // Validation Checks
-        const isIntersticeViolation = checkInterstice ? !checkInterstice(emp, day.originalIdx) : false;
-        const isSundayViolation = (day.isSunday && validateSunday2x1) ? !validateSunday2x1(emp, day.originalIdx) : false;
+      {filteredDays.map((day, i) => {
+        const currentShift = shiftForDay(day.originalIdx);
+        const isSelected = day.originalIdx === selectedDayIdx;
+
+        // Validation logic
+        const hasIntersticeConflict = checkInterstice ? !checkInterstice(emp, day.originalIdx) : false;
+        const hasSundayWarning = validateSunday2x1 ? !validateSunday2x1(emp, day.originalIdx) : false;
 
         return (
           <td 
             key={day.num} 
-            className={`p-2 text-center relative border-r border-slate-100/50 ${isSelected ? \'bg-orange-50/30\' : \'\'} ${isHighlight ? \'bg-orange-50/10\' : \'\'}`}
+            onClick={() => onSelectDay(day.originalIdx)}
+            onDoubleClick={() => handleShiftChange(day.originalIdx, currentShift)}
+            className={`p-1.5 border-r border-slate-100/50 text-center align-middle cursor-pointer transition-colors ${isSelected ? 'bg-orange-50' : ''}`}
+            title={`Clique para selecionar, duplo clique para alterar. Conflito: ${hasIntersticeConflict}, Aviso Domingo: ${hasSundayWarning}`}
           >
-            {isHighlight && <div className="absolute inset-y-0 left-0 right-0 border-x-2 border-orange-400/10 pointer-events-none"></div>}
-            
-            {/* Visual Indicators for Violations */}
-            {isIntersticeViolation && <div className="absolute inset-0 bg-yellow-300/30 animate-pulse pointer-events-none" title="Interstício < 11h"></div>}
-            {isSundayViolation && <div className="absolute inset-0 border-2 border-red-500 pointer-events-none" title="Violação Regra Domingo (2x1)"></div>}
-
-            <select 
-              value={shift}
-              onChange={(e) => onUpdateShift(emp.id, day.originalIdx, e.target.value as ShiftType)}
-              disabled={!isEditable || shift === \'FE\'}
-              className={`w-10 h-10 rounded-lg text-white text-[10px] font-extrabold shadow-sm transition-all relative z-10 text-center ${\n                isEditable && shift !== \'FE\' ? \'cursor-pointer\' : \'cursor-default\'\n              } ${shift === \'T\' ? \'bg-sky-600\' : shift === \'F\' ? \'bg-orange-500\' : shift === \'FF\' ? \'bg-red-500\' : shift === \'C\' ? \'bg-teal-500\' : \'bg-indigo-600\'}`}>\
-                <option value="T">T</option>
-                <option value="F">F</option>
-                <option value="FF">FF</option>
-                <option value="C">C</option>
-                <option value="FE">FE</option>
-            </select>
+            <ShiftCell 
+              shift={currentShift} 
+              isSunday={day.isSunday} 
+              isHoliday={day.isHoliday} 
+              hasConflict={hasIntersticeConflict} 
+              hasWarning={hasSundayWarning && currentShift === 'T'}
+            />
           </td>
-        );
+        )
       })}
     </tr>
   );
-};
-
-export const ShiftRow = memo(ShiftRowComponent);
+});

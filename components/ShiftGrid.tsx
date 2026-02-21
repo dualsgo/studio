@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from \'react\';
-import { Employee, ShiftType, MonthYear } from \'../types\';
-import { Icon } from \'./Icon\';
-import { SHIFT_HOURS } from \'../constants\';
-import { ShiftRow, DayInfo } from \'./ShiftRow\';
+import React, { useState, useMemo } from 'react';
+import { Employee, ShiftType, MonthYear } from '../types';
+import { Icon } from './Icon';
+import { SHIFT_HOURS } from '../constants';
+import { ShiftRow, DayInfo } from './ShiftRow';
 
 interface ShiftGridProps {
   employees: Employee[];
@@ -43,7 +43,7 @@ export const ShiftGrid: React.FC<ShiftGridProps> = ({
   const [filter, setFilter] = useState<'all' | 'sunday' | 'holiday'>('all');
   const [isLocked, setIsLocked] = useState(false);
 
-  const months = [\'Janeiro\', \'Fevereiro\', \'Março\', \'Abril\', \'Maio\', \'Junho\', \'Julho\', \'Agosto\', \'Setembro\', \'Outubro\', \'Novembro\', \'Dezembro\'];
+  const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
   const daysInMonth = useMemo(() => {
     const date = new Date(currentMY.year, currentMY.month + 1, 0);
@@ -51,30 +51,30 @@ export const ShiftGrid: React.FC<ShiftGridProps> = ({
   }, [currentMY]);
 
   const days = useMemo(() => {
-    const weekdays = [\'DOM\', \'SEG\', \'TER\', \'QUA\', \'QUI\', \'SEX\', \'SAB\'];
+    const weekdays = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB'];
 
     return Array.from({ length: daysInMonth }, (_, i) => {
       const date = new Date(currentMY.year, currentMY.month, i + 1);
 
       return {
-        num: (i + 1).toString().padStart(2, \'0\'),
+        num: (i + 1).toString().padStart(2, '0'),
         weekday: weekdays[date.getDay()],
         isSunday: date.getDay() === 0,
         isHoliday: false, 
-        dateStr: `${currentMY.year}-${(currentMY.month + 1).toString().padStart(2, \'0\')}-${(i + 1).toString().padStart(2, \'0\')}`
+        dateStr: `${currentMY.year}-${(currentMY.month + 1).toString().padStart(2, '0')}-${(i + 1).toString().padStart(2, '0')}`
       };
     });
   }, [currentMY, daysInMonth]);
 
   const filteredDays: DayInfo[] = useMemo(() => {
     const mapped = days.map((d, i) => ({ ...d, originalIdx: i }));
-    if (filter === \'sunday\') return mapped.filter(d => d.isSunday);
-    if (filter === \'holiday\') return mapped.filter(d => d.isHoliday);
+    if (filter === 'sunday') return mapped.filter(d => d.isSunday);
+    if (filter === 'holiday') return mapped.filter(d => d.isHoliday);
     return mapped;
   }, [days, filter]);
 
-  const monthKey = `${currentMY.year}-${currentMY.month.toString().padStart(2, \'0\')}`;
-  const currentDayType = days[selectedDayIdx] ? (days[selectedDayIdx].isSunday ? \'SUNDAY\' : (days[selectedDayIdx].isHoliday ? \'HOLIDAY\' : \'WEEKDAY\')) : \'WEEKDAY\';
+  const monthKey = `${currentMY.year}-${currentMY.month.toString().padStart(2, '0')}`;
+  const currentDayType = days[selectedDayIdx] ? (days[selectedDayIdx].isSunday ? 'SUNDAY' : (days[selectedDayIdx].isHoliday ? 'HOLIDAY' : 'WEEKDAY')) : 'WEEKDAY';
   const availableHours = SHIFT_HOURS[currentDayType];
 
   // Coverage Stats Calculation
@@ -82,11 +82,11 @@ export const ShiftGrid: React.FC<ShiftGridProps> = ({
       const counts = { abertura: 0, intermediario: 0, fechamento: 0 };
       employees.forEach(emp => {
           const shift = (emp.shifts[monthKey] || [])[selectedDayIdx];
-          if (shift === \'T\') {
+          if (shift === 'T') {
               const shiftName = (emp.dailyShiftNames?.[monthKey] || [])[selectedDayIdx] || emp.shiftName;
-              if (shiftName === \'Abertura\') counts.abertura++;
-              else if (shiftName === \'Intermediário\') counts.intermediario++;
-              else if (shiftName === \'Fechamento\') counts.fechamento++;
+              if (shiftName === 'Abertura') counts.abertura++;
+              else if (shiftName === 'Intermediário') counts.intermediario++;
+              else if (shiftName === 'Fechamento') counts.fechamento++;
           }
       });
       return counts;
@@ -119,8 +119,8 @@ export const ShiftGrid: React.FC<ShiftGridProps> = ({
       <div className="p-4 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between bg-white sticky top-0 z-30 gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex bg-slate-100 p-1 rounded-lg">
-            <button onClick={() => setFilter(\'all\')} className={`px-4 py-1.5 rounded-md text-[11px] font-extrabold transition-all ${filter === \'all\' ? \'bg-white shadow-sm text-orange-600\' : \'text-slate-500 hover:text-slate-700\'}`}>Mês Inteiro</button>
-            <button onClick={() => setFilter(\'sunday\')} className={`px-4 py-1.5 rounded-md text-[11px] font-extrabold transition-all ${filter === \'sunday\' ? \'bg-white shadow-sm text-orange-600\' : \'text-slate-500 hover:text-slate-700\'}`}>Somente Domingos</button>
+            <button onClick={() => setFilter('all')} className={`px-4 py-1.5 rounded-md text-[11px] font-extrabold transition-all ${filter === 'all' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}>Mês Inteiro</button>
+            <button onClick={() => setFilter('sunday')} className={`px-4 py-1.5 rounded-md text-[11px] font-extrabold transition-all ${filter === 'sunday' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}>Somente Domingos</button>
           </div>
           
           <div className="flex items-center gap-2 bg-green-50 border border-green-100 p-1 rounded-lg">
@@ -138,13 +138,13 @@ export const ShiftGrid: React.FC<ShiftGridProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
-            <button onClick={() => setIsEditable(!isEditable)} className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-extrabold transition-all border ${isEditable ? \'bg-orange-500 text-white border-orange-500\' : \'bg-white border-slate-200 text-slate-700 hover:bg-slate-50\'}`}>
-            <Icon name={isEditable ? \'check_circle\' : \'edit_square\'} className="text-sm" />
-            {isEditable ? \'Salvar Alterações\' : \'Modo de Edição\'}
+            <button onClick={() => setIsEditable(!isEditable)} className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-extrabold transition-all border ${isEditable ? 'bg-orange-500 text-white border-orange-500' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
+            <Icon name={isEditable ? 'check_circle' : 'edit_square'} className="text-sm" />
+            {isEditable ? 'Salvar Alterações' : 'Modo de Edição'}
             </button>
-            <button onClick={() => setIsLocked(!isLocked)} className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-extrabold transition-all border ${isLocked ? \'bg-red-500 text-white border-red-500\' : \'bg-white border-slate-200 text-slate-700 hover:bg-slate-50\'}`}>
-                <Icon name={isLocked ? \'lock\' : \'lock_open\'} className="text-sm" />
-                {isLocked ? \'Bloqueado\' : \'Desbloqueado\'}
+            <button onClick={() => setIsLocked(!isLocked)} className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-extrabold transition-all border ${isLocked ? 'bg-red-500 text-white border-red-500' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
+                <Icon name={isLocked ? 'lock' : 'lock_open'} className="text-sm" />
+                {isLocked ? 'Bloqueado' : 'Desbloqueado'}
             </button>
         </div>
       </div>
@@ -152,15 +152,15 @@ export const ShiftGrid: React.FC<ShiftGridProps> = ({
       {/* Coverage Counter */}
       <div className="bg-slate-50 px-6 py-2 border-b border-slate-200 flex gap-6 items-center justify-center lg:justify-start">
          <span className="text-[10px] font-bold text-slate-400 uppercase">Cobertura do Dia {days[selectedDayIdx]?.num}:</span>
-         <div className={`flex items-center gap-1.5 ${coverageStats.abertura < 2 ? \'text-red-500\' : \'text-slate-700\'}`}>
+         <div className={`flex items-center gap-1.5 ${coverageStats.abertura < 2 ? 'text-red-500' : 'text-slate-700'}`}>
             <span className="font-extrabold text-xs">{coverageStats.abertura}</span>
             <span className="text-[10px] uppercase font-bold text-slate-400">Abertura</span>
          </div>
-         <div className={`flex items-center gap-1.5 ${coverageStats.intermediario < 2 ? \'text-red-500\' : \'text-slate-700\'}`}>
+         <div className={`flex items-center gap-1.5 ${coverageStats.intermediario < 2 ? 'text-red-500' : 'text-slate-700'}`}>
             <span className="font-extrabold text-xs">{coverageStats.intermediario}</span>
             <span className="text-[10px] uppercase font-bold text-slate-400">Inter.</span>
          </div>
-         <div className={`flex items-center gap-1.5 ${coverageStats.fechamento < 2 ? \'text-red-500\' : \'text-slate-700\'}`}>
+         <div className={`flex items-center gap-1.5 ${coverageStats.fechamento < 2 ? 'text-red-500' : 'text-slate-700'}`}>
             <span className="font-extrabold text-xs">{coverageStats.fechamento}</span>
             <span className="text-[10px] uppercase font-bold text-slate-400">Fechamento</span>
          </div>
@@ -177,10 +177,10 @@ export const ShiftGrid: React.FC<ShiftGridProps> = ({
                 <th 
                   key={day.num} 
                   onClick={() => onSelectDay(day.originalIdx)} 
-                  className={`p-3 text-center min-w-[62px] cursor-pointer transition-colors relative border-r border-slate-100/50 ${selectedDayIdx === day.originalIdx ? \'bg-orange-50\' : \'\'} ${day.isSunday || day.isHoliday ? \'bg-orange-50/30\' : \'\'}`}
+                  className={`p-3 text-center min-w-[62px] cursor-pointer transition-colors relative border-r border-slate-100/50 ${selectedDayIdx === day.originalIdx ? 'bg-orange-50' : ''} ${day.isSunday || day.isHoliday ? 'bg-orange-50/30' : ''}`}
                 >
                   {(day.isSunday || day.isHoliday) && <div className="absolute inset-0 border-2 border-orange-400 pointer-events-none opacity-50"></div>}
-                  <div className={`text-sm font-extrabold ${day.isSunday ? \'text-orange-600\' : \'text-slate-900\'}`}>{day.num}</div>
+                  <div className={`text-sm font-extrabold ${day.isSunday ? 'text-orange-600' : 'text-slate-900'}`}>{day.num}</div>
                   <div className="text-[9px] font-bold opacity-60">{day.weekday}</div>
                 </th>
               ))}
