@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Employee, ShiftType, MonthYear } from '../types';
-import { MOCK_EMPLOYEES, SHIFT_HOURS, SHIFT_DEFINITIONS, HOLIDAYS_2026, ROLES } from '../constants';
+import { MOCK_EMPLOYEES, SHIFT_HOURS, SHIFT_DEFINITIONS, HOLIDAYS_2026 } from '../constants';
 
 export const useSchedule = () => {
   const [employees, setEmployees] = useState<Employee[]>(MOCK_EMPLOYEES);
@@ -27,9 +27,6 @@ export const useSchedule = () => {
   });
 
   const monthKey = `${currentMY.year}-${currentMY.month.toString().padStart(2, '0')}`;
-
-  // Simulated "today"
-  const today = useMemo(() => new Date(2026, 2, 15), []);
 
   const openConfirmation = useCallback((options: {
     title: string;
@@ -172,18 +169,6 @@ export const useSchedule = () => {
     }));
   }, [monthKey]);
 
-  const updateEmployeeDailyRole = useCallback((empId: string, dayIdx: number, newRole: string) => {
-    setEmployees(prev => prev.map(emp => {
-      if (emp.id === empId) {
-        const currentDailyRoles = emp.dailyRoles?.[monthKey] || Array(31).fill('Vendedor');
-        const updatedRoles = [...currentDailyRoles];
-        updatedRoles[dayIdx] = newRole;
-        return { ...emp, dailyRoles: { ...emp.dailyRoles, [monthKey]: updatedRoles } };
-      }
-      return emp;
-    }));
-  }, [monthKey]);
-
   const resetMonth = useCallback(() => {
     openConfirmation({
       title: "Confirmar Reset",
@@ -195,9 +180,9 @@ export const useSchedule = () => {
           ...emp,
           shifts: { ...emp.shifts, [monthKey]: Array(daysInMonth).fill('F') },
           dailyHours: { ...emp.dailyHours, [monthKey]: Array(daysInMonth).fill(emp.workPeriod) },
-          dailyShiftNames: { ...emp.dailyShiftNames, [monthKey]: Array(daysInMonth).fill(emp.shiftName) },
-          dailyRoles: { ...emp.dailyRoles, [monthKey]: Array(daysInMonth).fill('Vendedor') }
+          dailyShiftNames: { ...emp.dailyShiftNames, [monthKey]: Array(daysInMonth).fill(emp.shiftName) }
         })));
+        setConfirmationModal(prev => ({ ...prev, isOpen: false }));
       }
     });
   }, [currentMY, monthKey, openConfirmation]);
@@ -223,7 +208,6 @@ export const useSchedule = () => {
     const newShiftsMap: Record<string, ShiftType[]> = {};
     const newHoursMap: Record<string, string[]> = {};
     const newShiftNamesMap: Record<string, string[]> = {};
-    const newRolesMap: Record<string, string[]> = {};
 
     employees.forEach((emp, index) => {
       const shifts = Array.from({ length: daysInTargetMonth }, (_, dayIdx) => {
@@ -264,12 +248,10 @@ export const useSchedule = () => {
       });
 
       const shiftNames = Array.from({ length: daysInTargetMonth }, () => emp.shiftName);
-      const roles = Array.from({ length: daysInTargetMonth }, () => 'Vendedor');
 
       newShiftsMap[emp.id] = shifts;
       newHoursMap[emp.id] = hours;
       newShiftNamesMap[emp.id] = shiftNames;
-      newRolesMap[emp.id] = roles;
     });
 
     const summaryText = `Previsão de Dias de Trabalho: ${totalWorkDays}\nFeriados Identificados: ${targetHolidays.length}\n\nO mês atual será preservado.`;
@@ -284,20 +266,17 @@ export const useSchedule = () => {
           ...emp,
           shifts: { ...emp.shifts, [targetKey]: newShiftsMap[emp.id] },
           dailyHours: { ...emp.dailyHours, [targetKey]: newHoursMap[emp.id] },
-          dailyShiftNames: { ...emp.dailyShiftNames, [targetKey]: newShiftNamesMap[emp.id] },
-          dailyRoles: { ...emp.dailyRoles, [targetKey]: newRolesMap[emp.id] }
+          dailyShiftNames: { ...emp.dailyShiftNames, [targetKey]: newShiftNamesMap[emp.id] }
         })));
         setCurrentMY({ month: nextMonth, year: nextYear });
         setSelectedDayIdx(0);
+        setConfirmationModal(prev => ({ ...prev, isOpen: false }));
       }
     });
 
   }, [currentMY, employees, openConfirmation]);
 
   const shareWhatsApp = useCallback((dayIdx: number) => {
-    // ... existing logic ...
-    // Updated to include Role? 
-    // For now keep as is to avoid breaking changes, can enhance later
     const weekdays = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
     const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
     const date = new Date(currentMY.year, currentMY.month, dayIdx + 1);
@@ -318,13 +297,12 @@ export const useSchedule = () => {
       if (empsInHour.length > 0) {
         text += `⏰ *${h}*\n`;
         empsInHour.forEach(e => {
-          const role = (e.dailyRoles?.[monthKey] || [])[dayIdx] || 'Vendedor';
-          text += `• ${e.name} (${role})\n`;
+          text += `• ${e.name}\n`;
         });
         text += `\n`;
       }
     });
-    // ... rest of logic for OFF days ...
+    
     const mShiftsGetter = (e: Employee) => (e.shifts[monthKey] || [])[dayIdx];
     const off = employees.filter(e => ['F', 'FE', 'C'].includes(mShiftsGetter(e)));
     if (off.length > 0) {
@@ -342,46 +320,31 @@ export const useSchedule = () => {
 
   // Export to CSV
   const exportExcel = useCallback(() => {
-    let csvContent = "Nome,Dia da Semana,Data,Função,Turno,Horário,Status,Carga Horária Semanal (Est)\n";
-
-    const weekdays = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+    const weekdays = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB'];
     const daysInMonth = new Date(currentMY.year, currentMY.month + 1, 0).getDate();
+    
+    let header = 'Colaborador,';
+    for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(currentMY.year, currentMY.month, day);
+        header += `${weekdays[date.getDay()]} ${day},`;
+    }
+    let csvContent = header.slice(0, -1) + '\n';
 
     employees.forEach(emp => {
-      // Simple weekly hours approx (sum of hours in month / 4)
-      // In real app, calculate actual week sum. 
-      // For now, let's just log it per row or just once? The request asked for "Weekly Hours Summary".
-      // Adding it as a column might be redundant per day. 
-      // Let's stick strictly to daily data but better formatted.
-
-      for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(currentMY.year, currentMY.month, day);
-        const dayOfWeek = weekdays[date.getDay()];
-        const formattedDate = `${day.toString().padStart(2, '0')}/${(currentMY.month + 1).toString().padStart(2, '0')}/${currentMY.year}`;
-
-        const dayIdx = day - 1;
-        const shiftType = (emp.shifts[monthKey] || [])[dayIdx] || 'F';
-        const shiftName = (emp.dailyShiftNames?.[monthKey] || [])[dayIdx] || emp.shiftName;
-        const role = (emp.dailyRoles?.[monthKey] || [])[dayIdx] || 'Vendedor';
-        const hours = (emp.dailyHours[monthKey] || [])[dayIdx] || emp.workPeriod;
-
-        let status = shiftType === 'T' ? 'Trabalho' :
-          shiftType === 'F' ? 'Folga' :
-            shiftType === 'FF' ? 'Feriado' :
-              shiftType === 'FE' ? 'Férias' : 'Curso';
-
-        const cleanName = emp.name.replace(/,/g, '');
-        const cleanHours = hours.replace(/,/g, '');
-
-        csvContent += `${cleanName},${dayOfWeek},${formattedDate},${role},${shiftName},${cleanHours},${status},44:00\n`;
-      }
+        let row = `${emp.name.replace(/,/g, '')},`;
+        for (let day = 1; day <= daysInMonth; day++) {
+            const dayIdx = day - 1;
+            const shiftType = (emp.shifts[monthKey] || [])[dayIdx] || 'F';
+            row += `${shiftType},`;
+        }
+        csvContent += row.slice(0, -1) + '\n';
     });
 
     const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `escala_store1187_${currentMY.year}_${currentMY.month + 1}.csv`);
+    link.setAttribute("download", `escala_${currentMY.year}_${currentMY.month + 1}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -393,7 +356,6 @@ export const useSchedule = () => {
     window.print();
   }, []);
 
-  // ... other existing functions (addEmployee, updateEmployee, etc.) ...
   const addEmployee = useCallback((name: string, isYoung: boolean, courseDay: string, shiftName: string) => {
     const shiftDef = SHIFT_DEFINITIONS.find(s => s.name === shiftName);
     const workPeriod = shiftDef ? shiftDef.hours : '10h às 18h20';
@@ -448,12 +410,10 @@ export const useSchedule = () => {
     selectedDayIdx,
     waModal,
     confirmationModal,
-    today,
     monthKey,
     updateShift,
     updateEmployeeDailyHour,
     updateEmployeeDailyShiftName,
-    updateEmployeeDailyRole, // New Export
     resetMonth,
     generateNextMonth,
     shareWhatsApp,
@@ -466,7 +426,7 @@ export const useSchedule = () => {
     openConfirmation,
     exportExcel,
     exportPDF,
-    checkInterstice, // New Export
-    validateSunday2x1 // New Export
+    checkInterstice,
+    validateSunday2x1
   };
 };

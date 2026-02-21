@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
-import { Header } from './components/Header';
-import { Icon } from './components/Icon';
-import { DaySummaryCard } from './components/DaySummaryCard';
-import { ShiftGrid } from './components/ShiftGrid';
-import { ActionToolbar } from './components/ActionToolbar';
-import { TeamView } from './components/TeamView';
-import { useSchedule } from './hooks/useSchedule';
-import { ConfirmationModal } from './components/ConfirmationModal';
+import React, { useState } from \'react\';
+import { Header } from \'./components/Header\';
+import { Icon } from \'./components/Icon\';
+import { DaySummaryCard } from \'./components/DaySummaryCard\';
+import { ShiftGrid } from \'./components/ShiftGrid\';
+import { ActionToolbar } from \'./components/ActionToolbar\';
+import { TeamView } from \'./components/TeamView\';
+import { useSchedule } from \'./hooks/useSchedule\';
+import { ConfirmationModal } from \'./components/ConfirmationModal\';
 
 const App: React.FC = () => {
   const {
@@ -15,11 +15,9 @@ const App: React.FC = () => {
     selectedDayIdx,
     waModal,
     confirmationModal, 
-    today,
     updateShift,
     updateEmployeeDailyHour,
     updateEmployeeDailyShiftName,
-    updateEmployeeDailyRole, // New
     resetMonth,
     generateNextMonth,
     shareWhatsApp,
@@ -67,10 +65,11 @@ const App: React.FC = () => {
               <button onClick={() => { 
                 navigator.clipboard.writeText(waModal.text); 
                 openConfirmation({
-                  title: 'Sucesso',
-                  message: 'Copiado para a área de transferência!',
+                  title: \'Sucesso\',
+                  message: \'Copiado para a área de transferência!\',
                   isAlert: true,
-                  type: 'success'
+                  type: \'success\',
+                  onConfirm: () => {}
                 });
               }} className="flex-1 bg-green-600 text-white font-extrabold py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 hover:bg-green-700 transition-all active:scale-95">
                 <Icon name="content_copy" /> Copiar para WhatsApp
@@ -81,7 +80,7 @@ const App: React.FC = () => {
       )}
 
       <main className="flex-1 px-4 sm:px-6 lg:px-10 py-8 max-w-[1700px] mx-auto w-full">
-        {currentView === 'dashboard' ? (
+        {currentView === \'dashboard\' ? (
           <>
             <div className="mb-8 animate-fade-in flex flex-col sm:flex-row sm:items-end justify-between gap-6 no-print">
               <div>
@@ -108,17 +107,15 @@ const App: React.FC = () => {
               employees={employees} 
               currentMY={currentMY}
               selectedDayIdx={selectedDayIdx}
-              today={today}
               onSelectDay={setSelectedDayIdx}
               onUpdateShift={updateShift} 
               onUpdateEmployeeDailyHour={updateEmployeeDailyHour}
               onUpdateEmployeeDailyShiftName={updateEmployeeDailyShiftName}
-              onUpdateEmployeeDailyRole={updateEmployeeDailyRole}
               onShareWhatsApp={shareWhatsApp}
               onGenerateNextMonth={generateNextMonth}
               onResetMonth={resetMonth}
-              onNextMonth={() => navigateMonth('next')}
-              onPrevMonth={() => navigateMonth('prev')}
+              onNextMonth={() => navigateMonth(\'next\')}
+              onPrevMonth={() => navigateMonth(\'prev\')}
               openConfirmation={openConfirmation}
               checkInterstice={checkInterstice}
               validateSunday2x1={validateSunday2x1}

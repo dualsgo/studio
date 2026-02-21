@@ -36,7 +36,8 @@ export const ActionToolbar: React.FC<ActionToolbarProps> = ({ onExportExcel, onE
           title: "Backup em Nuvem",
           message: "Esta funcionalidade requer a integração com Backend (Fase 2).\n\nAtualmente os dados são salvos apenas localmente durante a sessão.",
           type: 'warning',
-          isAlert: true
+          isAlert: true,
+          onConfirm: () => {}
       });
   };
 
